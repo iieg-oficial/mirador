@@ -1,3 +1,10 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
 [project]
 name = "tablerillos-backend"
 version = "0.1.0"
@@ -15,16 +22,20 @@ dependencies = [
     "cryptography>=44.0",      # cifrado Fernet de credenciales de conexión
     "sqlglot>=25.0",          # parser SQL para validación SELECT-only
     "python-multipart>=0.0.12",
-    # minerva_sdk se instala aparte (editable o como dependencia publicada):
-    #   pip install -e path/to/minerva/sdk
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8.3",
-    "pytest-asyncio>=0.24",
+    "pytest-asyncio>=0.24",   # httpx (TestClient) ya viene en deps base
     "ruff>=0.8",
     "mypy>=1.13",
+]
+# SDK de Minerva: repo privado, se instala con un PAT (GITHUB_TOKEN). No es
+# dependencia base para que la instalación de dev funcione sin el token.
+#   pip install -e ".[dev,minerva]"
+minerva = [
+    "minerva-sdk @ git+https://github.com/iieg-oficial/minerva.git@develop#subdirectory=sdk",
 ]
 
 [tool.ruff]

@@ -1,17 +1,32 @@
 """Punto de entrada de la API de Tablerillos.
 
-Fase 0 (andamiaje): solo expone metadatos y un health check. Los routers de
-cada módulo (auth, connections, datasets, charts, dashboards, public, ...) se
-montarán en las fases siguientes.
+Monta los routers de los módulos bajo `/api/...`. La autenticación se resuelve a
+través de la abstracción `app.modules.auth` (stub en dev, Minerva en prod).
 """
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from app.core.config import get_settings
+from app.modules.auth.router import router as auth_router
+
+settings = get_settings()
 
 app = FastAPI(
     title="Tablerillos API",
     version="0.1.0",
     description="Business Intelligence institucional del IIEG.",
 )
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins,
+    allow_credentials=True,  # necesario para la cookie de sesión BFF
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
 
 
 @app.get("/health", tags=["meta"])
@@ -20,6 +35,6 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-# Los routers se registran aquí en fases posteriores, por ejemplo:
-#   from app.modules.auth.router import router as auth_router
-#   app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
+# Próximos módulos (Bloque C en adelante):
+#   from app.modules.connections.router import router as connections_router
+#   app.include_router(connections_router, prefix="/api/admin/connections", tags=["connections"])
