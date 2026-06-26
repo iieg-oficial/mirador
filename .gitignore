@@ -1,0 +1,39 @@
+# ----- Python / backend -----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+
+# ----- Node / frontend -----
+node_modules/
+dist/
+.vite/
+*.local
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ----- Infra / secrets -----
+.env
+*.env
+!.env.example
+!*/.env.example
+infra/**/*.secret
+
+# ----- Editores / SO -----
+.idea/
+.vscode/
+.DS_Store
+*.swp
+
+# ----- Datos / artefactos locales -----
+*.sqlite3
+exports/
+.tmp/

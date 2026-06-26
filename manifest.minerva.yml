@@ -1,0 +1,120 @@
+# =====================================================================
+# Manifiesto de Minerva para Tablerillos
+# ---------------------------------------------------------------------
+# Declara la aplicación, sus permisos y sus roles ante Minerva (el IdP
+# institucional del IIEG). La autorización es decidida SIEMPRE por
+# Minerva en tiempo real; este archivo es la fuente de los permisos.
+#
+# Convención de permisos:  {application_code}.{resource}.{action}
+#   action ∈ view, create, update, delete, assign, approve,
+#            authorize, export, import, manage
+#
+# Mapeo desde el manual de Tablerillos:
+#   read  -> view        publish -> authorize       review -> approve
+#   connections:test -> connections.manage
+#
+# Importar (dev):   colocar en la carpeta manifests/ de Minerva
+#                   (auto-import si MINERVA_AUTO_IMPORT_MANIFESTS=true)
+#         o manual:  ver infra/scripts/import-manifest.sh
+# =====================================================================
+
+application:
+  code: tablerillos
+  name: Tablerillos
+  description: Business Intelligence institucional del IIEG (evoluciona los Cuadernillos Municipales)
+  base_url: http://localhost:8000
+  redirect_uris:
+    - http://localhost:8000/api/auth/callback
+
+permissions:
+  # ----- Conexiones -----
+  - { key: tablerillos.connections.view,    name: Ver conexiones,            description: Permite consultar conexiones a bases de datos }
+  - { key: tablerillos.connections.create,  name: Crear conexiones }
+  - { key: tablerillos.connections.update,  name: Editar conexiones }
+  - { key: tablerillos.connections.delete,  name: Eliminar conexiones }
+  - { key: tablerillos.connections.manage,  name: Probar y administrar conexiones }
+  # ----- Datasets -----
+  - { key: tablerillos.datasets.view,       name: Ver datasets }
+  - { key: tablerillos.datasets.create,     name: Crear datasets }
+  - { key: tablerillos.datasets.update,     name: Editar datasets }
+  - { key: tablerillos.datasets.delete,     name: Eliminar datasets }
+  # ----- Gráficas -----
+  - { key: tablerillos.charts.view,         name: Ver gráficas }
+  - { key: tablerillos.charts.create,       name: Crear gráficas }
+  - { key: tablerillos.charts.update,       name: Editar gráficas }
+  - { key: tablerillos.charts.delete,       name: Eliminar gráficas }
+  # ----- Dashboards -----
+  - { key: tablerillos.dashboards.view,     name: Ver dashboards }
+  - { key: tablerillos.dashboards.create,   name: Crear dashboards }
+  - { key: tablerillos.dashboards.update,   name: Editar dashboards (incluye enviar a revisión) }
+  - { key: tablerillos.dashboards.delete,   name: Eliminar dashboards }
+  - { key: tablerillos.dashboards.approve,  name: Revisar y aprobar dashboards }
+  - { key: tablerillos.dashboards.authorize, name: Publicar dashboards }
+  # ----- Exportación / Auditoría -----
+  - { key: tablerillos.exports.create,      name: Generar exportaciones }
+  - { key: tablerillos.audit.view,          name: Consultar auditoría }
+
+roles:
+  - name: Superadmin
+    description: Control total del sistema
+    permissions:
+      - tablerillos.connections.view
+      - tablerillos.connections.create
+      - tablerillos.connections.update
+      - tablerillos.connections.delete
+      - tablerillos.connections.manage
+      - tablerillos.datasets.view
+      - tablerillos.datasets.create
+      - tablerillos.datasets.update
+      - tablerillos.datasets.delete
+      - tablerillos.charts.view
+      - tablerillos.charts.create
+      - tablerillos.charts.update
+      - tablerillos.charts.delete
+      - tablerillos.dashboards.view
+      - tablerillos.dashboards.create
+      - tablerillos.dashboards.update
+      - tablerillos.dashboards.delete
+      - tablerillos.dashboards.approve
+      - tablerillos.dashboards.authorize
+      - tablerillos.exports.create
+      - tablerillos.audit.view
+
+  - name: Administrador BI
+    description: Crea datasets, gráficas y dashboards; publica
+    permissions:
+      - tablerillos.connections.view
+      - tablerillos.datasets.view
+      - tablerillos.datasets.create
+      - tablerillos.datasets.update
+      - tablerillos.datasets.delete
+      - tablerillos.charts.view
+      - tablerillos.charts.create
+      - tablerillos.charts.update
+      - tablerillos.charts.delete
+      - tablerillos.dashboards.view
+      - tablerillos.dashboards.create
+      - tablerillos.dashboards.update
+      - tablerillos.dashboards.authorize
+      - tablerillos.exports.create
+
+  - name: Editor
+    description: Edita dashboards y visualizaciones; envía a revisión
+    permissions:
+      - tablerillos.datasets.view
+      - tablerillos.charts.view
+      - tablerillos.charts.create
+      - tablerillos.charts.update
+      - tablerillos.dashboards.view
+      - tablerillos.dashboards.create
+      - tablerillos.dashboards.update
+      - tablerillos.exports.create
+
+  - name: Revisor
+    description: Revisa y aprueba dashboards antes de publicar
+    permissions:
+      - tablerillos.dashboards.view
+      - tablerillos.dashboards.approve
+
+# Nota: el rol "Visitante" NO se declara aquí. Es acceso público sin login
+# servido por las rutas /api/public/* (sin ningún dependency de Minerva).
