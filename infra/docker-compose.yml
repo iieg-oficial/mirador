@@ -32,7 +32,9 @@ services:
   redis:
     image: redis:7-alpine
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      # Default 6380 en el host para no chocar con el Redis local de Minerva
+      # (6379). Dentro de compose el backend siempre usa redis:6379.
+      - "${REDIS_PORT:-6380}:6379"
     volumes:
       - redis_data:/data
     healthcheck:
