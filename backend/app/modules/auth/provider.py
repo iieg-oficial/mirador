@@ -30,8 +30,6 @@ class AuthProvider(Protocol):
         """Resuelve la identidad del request o lanza 401 si no hay sesión válida."""
         ...
 
-    async def check_permission(
-        self, request: Request, user: CurrentUser, permission: str
-    ) -> None:
+    async def check_permission(self, request: Request, user: CurrentUser, permission: str) -> None:
         """Autoriza `permission` para `user`; lanza 403 si no lo tiene."""
         ...

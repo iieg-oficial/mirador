@@ -47,11 +47,7 @@ class MinervaAuthProvider:
             "Flujo BFF/OIDC con Minerva pendiente de implementar (swap del SDK)."
         )
 
-    async def check_permission(
-        self, request: Request, user: CurrentUser, permission: str
-    ) -> None:
+    async def check_permission(self, request: Request, user: CurrentUser, permission: str) -> None:
         # TODO(swap-minerva): delegar a minerva_sdk.require_permission con el
         # access_token de la sesión; Minerva decide en tiempo real.
-        raise NotImplementedError(
-            "Verificación de permisos con Minerva pendiente (swap del SDK)."
-        )
+        raise NotImplementedError("Verificación de permisos con Minerva pendiente (swap del SDK).")

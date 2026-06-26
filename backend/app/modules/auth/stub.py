@@ -20,9 +20,7 @@ class StubAuthProvider:
     async def get_current_user(self, request: Request) -> CurrentUser:
         return self._user
 
-    async def check_permission(
-        self, request: Request, user: CurrentUser, permission: str
-    ) -> None:
+    async def check_permission(self, request: Request, user: CurrentUser, permission: str) -> None:
         header = request.headers.get("X-Dev-Permissions")
         if header is None:
             # Sin header: modo "conceder todo" para desarrollo ágil.
