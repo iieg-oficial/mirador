@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import get_settings
 from app.modules.auth.router import router as auth_router
+from app.modules.connections.router import router as connections_router
 
 settings = get_settings()
 
@@ -27,14 +28,10 @@ app.add_middleware(
 )
 
 app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
+app.include_router(connections_router, prefix="/api/admin/connections", tags=["connections"])
 
 
 @app.get("/health", tags=["meta"])
 def health() -> dict[str, str]:
     """Health check para orquestación y monitoreo."""
     return {"status": "ok"}
-
-
-# Próximos módulos (Bloque C en adelante):
-#   from app.modules.connections.router import router as connections_router
-#   app.include_router(connections_router, prefix="/api/admin/connections", tags=["connections"])

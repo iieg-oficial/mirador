@@ -8,4 +8,4 @@ registradas en `SQLModel.metadata` y Alembic las detecte. La base
 from app.shared.models import UUIDAuditBase  # noqa: F401
 
 # A medida que se implementan los módulos, registrar sus tablas:
-# from app.modules.connections.models import Connection  # noqa: F401  (Bloque C)
+from app.modules.connections.models import Connection  # noqa: F401,E402
