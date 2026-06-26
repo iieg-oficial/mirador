@@ -5,16 +5,23 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Paleta institucional IIEG
+        // Paleta morada institucional IIEG / Jalisco
         iieg: {
-          950: '#071628',
-          900: '#0c2340',
-          800: '#123a6b',
-          700: '#1a5296',
-          600: '#2368b0',
-          500: '#2e7fcb',
-          400: '#5b9fd6',
-          100: '#dbeafe',
+          950: '#240d30',
+          900: '#381548',
+          800: '#4a1d5e',
+          700: '#5C2472',  // primary — morado Jalisco
+          600: '#7b3699',
+          500: '#9a52ba',
+          400: '#b57fd0',
+          100: '#f3ebf6',
+          50:  '#faf5fc',
+        },
+        // Naranja de acento — color Jalisco
+        naranja: {
+          600: '#e67600',
+          500: '#FF8300',
+          100: '#fff4e6',
         },
       },
     },

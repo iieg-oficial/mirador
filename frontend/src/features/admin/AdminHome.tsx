@@ -25,25 +25,25 @@ interface QuickAction {
 const QUICK_ACTIONS: QuickAction[] = [
   {
     to: '/admin/conexiones',
-    title: 'Gestionar conexiones',
+    title: 'Conexiones',
     description: 'Registra, edita y prueba conexiones a bases de datos externas.',
     available: true,
   },
   {
     to: '/admin/datasets',
-    title: 'Crear datasets',
+    title: 'Datasets',
     description: 'Define consultas SQL sobre las conexiones registradas.',
     available: false,
   },
   {
     to: '/admin/graficas',
-    title: 'Diseñar gráficas',
+    title: 'Gráficas',
     description: 'Crea visualizaciones D3 a partir de los datasets disponibles.',
     available: false,
   },
   {
     to: '/admin/tableros',
-    title: 'Publicar tableros',
+    title: 'Tableros',
     description: 'Compone y publica dashboards con las gráficas creadas.',
     available: false,
   },
@@ -57,10 +57,10 @@ export function AdminHome() {
   return (
     <div className="p-8">
       {/* Encabezado */}
-      <div className="mb-8">
+      <div className="mb-8 border-b border-gray-200 pb-6">
         <h1 className="text-2xl font-bold text-gray-900">Bienvenido{greeting}</h1>
         <p className="mt-1 text-sm text-gray-500">
-          Panel de administración de Tablerillos — IIEG Jalisco
+          Panel de administración · Tablerillos IIEG Jalisco
         </p>
       </div>
 
@@ -73,7 +73,7 @@ export function AdminHome() {
           >
             <p
               className={`text-3xl font-bold ${
-                available ? 'text-iieg-800' : 'text-gray-300'
+                available ? 'text-iieg-700' : 'text-gray-200'
               }`}
             >
               {value}
@@ -84,7 +84,7 @@ export function AdminHome() {
         ))}
       </div>
 
-      {/* Acciones rápidas */}
+      {/* Cadena de datos */}
       <div>
         <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-gray-400">
           Cadena de datos
@@ -97,23 +97,28 @@ export function AdminHome() {
                 to={to}
                 className="group rounded-xl border border-gray-200 bg-white p-5 shadow-sm transition-all hover:border-iieg-700 hover:shadow-md"
               >
-                <h3 className="text-sm font-semibold text-iieg-800 group-hover:text-iieg-600">
-                  {title}
-                </h3>
-                <p className="mt-1 text-xs leading-relaxed text-gray-500">{description}</p>
+                <div className="mb-2 flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-iieg-700 group-hover:text-iieg-600">
+                    {title}
+                  </h3>
+                  <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-naranja-500 text-[10px] font-bold text-white">
+                    →
+                  </span>
+                </div>
+                <p className="text-xs leading-relaxed text-gray-500">{description}</p>
               </Link>
             ) : (
               <div
                 key={to}
                 className="cursor-not-allowed rounded-xl border border-gray-100 bg-gray-50 p-5"
               >
-                <h3 className="text-sm font-semibold text-gray-400">
-                  {title}
-                  <span className="ml-2 text-[10px] font-normal text-gray-300">
-                    próximamente
+                <div className="mb-2 flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-gray-400">{title}</h3>
+                  <span className="rounded-full bg-gray-200 px-1.5 py-0.5 text-[9px] text-gray-400">
+                    pronto
                   </span>
-                </h3>
-                <p className="mt-1 text-xs leading-relaxed text-gray-400">{description}</p>
+                </div>
+                <p className="text-xs leading-relaxed text-gray-400">{description}</p>
               </div>
             ),
           )}

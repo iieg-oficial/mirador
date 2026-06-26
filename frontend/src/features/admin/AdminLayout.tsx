@@ -94,16 +94,15 @@ export function AdminLayout() {
   return (
     <div className="flex h-screen overflow-hidden bg-gray-100">
       {/* Sidebar */}
-      <aside className="flex w-56 flex-shrink-0 flex-col bg-iieg-900 text-white">
-        {/* Cabecera del sidebar */}
-        <div className="flex items-center gap-3 border-b border-white/10 px-4 py-4">
-          <div className="flex h-8 w-8 items-center justify-center rounded bg-white/20 text-sm font-bold">
-            T
-          </div>
-          <div>
-            <p className="text-sm font-semibold leading-none">Tablerillos</p>
-            <p className="mt-0.5 text-[10px] text-white/40">Panel admin · IIEG</p>
-          </div>
+      <aside className="flex w-56 flex-shrink-0 flex-col bg-iieg-700 text-white">
+        {/* Cabecera del sidebar — logo IIEG */}
+        <div className="border-b border-white/10 px-4 py-4">
+          <img
+            src="/logo_blanco_iieg.png"
+            alt="IIEG Jalisco"
+            className="h-8 w-auto"
+          />
+          <p className="mt-2 text-xs font-semibold text-white/60">Tablerillos</p>
         </div>
 
         {/* Navegación */}
@@ -132,8 +131,8 @@ export function AdminLayout() {
                 className={({ isActive }) =>
                   `mb-0.5 flex items-center gap-3 rounded-md px-3 py-2.5 text-sm transition-colors ${
                     isActive
-                      ? 'bg-white/15 font-medium text-white'
-                      : 'text-white/65 hover:bg-white/10 hover:text-white'
+                      ? 'bg-white/20 font-semibold text-white border-l-2 border-naranja-500'
+                      : 'text-white/70 hover:bg-white/10 hover:text-white'
                   }`
                 }
               >
@@ -148,10 +147,13 @@ export function AdminLayout() {
 
         {/* Usuario y cierre de sesión */}
         <div className="border-t border-white/10 px-4 py-4">
+          {user?.name && (
+            <p className="text-xs font-medium text-white/70 truncate">{user.name}</p>
+          )}
           <p className="truncate text-xs text-white/40">{user?.email ?? user?.sub}</p>
           <button
             onClick={logout}
-            className="mt-2 w-full rounded-md px-2 py-1.5 text-left text-xs text-white/50 transition-colors hover:bg-white/10 hover:text-white/80"
+            className="mt-3 w-full rounded-md border border-white/20 px-2 py-1.5 text-left text-xs text-white/60 transition-colors hover:border-white/40 hover:text-white/90"
           >
             Cerrar sesión
           </button>

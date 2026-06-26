@@ -55,7 +55,7 @@ export function HomePage() {
       <section className="bg-gradient-to-br from-iieg-950 via-iieg-900 to-iieg-800 text-white">
         <div className="mx-auto max-w-7xl px-6 py-24">
           <div className="max-w-2xl">
-            <p className="mb-4 text-xs font-semibold uppercase tracking-widest text-white/50">
+            <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-naranja-500">
               Business Intelligence Municipal
             </p>
             <h1 className="text-4xl font-bold leading-tight sm:text-5xl">
@@ -63,24 +63,16 @@ export function HomePage() {
               <br />
               de Jalisco
             </h1>
-            <p className="mt-6 text-lg leading-relaxed text-white/75">
+            <p className="mt-6 text-lg leading-relaxed text-white/70">
               Visualizaciones interactivas sobre indicadores estadísticos y geográficos de
               los&nbsp;125 municipios de Jalisco, producidas por el IIEG.
             </p>
-            <div className="mt-10 flex flex-wrap gap-4">
+            <div className="mt-10">
               <a
                 href="#tableros"
-                className="rounded-lg bg-white px-6 py-3 text-sm font-semibold text-iieg-900 transition-colors hover:bg-white/90"
+                className="inline-block rounded-lg bg-naranja-500 px-7 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-naranja-600"
               >
-                Ver tableros
-              </a>
-              <a
-                href="https://datos.iieg.gob.mx"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="rounded-lg border border-white/25 px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-white/10"
-              >
-                Portal de datos ↗
+                Ver tableros disponibles
               </a>
             </div>
           </div>
@@ -119,7 +111,7 @@ export function HomePage() {
 
           {/* Estado vacío */}
           <div className="rounded-xl border-2 border-dashed border-gray-200 bg-white py-20 text-center">
-            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-iieg-900/8">
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-iieg-100">
               <svg
                 className="h-7 w-7 text-iieg-700"
                 fill="none"
@@ -153,7 +145,7 @@ export function HomePage() {
                 key={title}
                 className="rounded-xl border border-gray-100 bg-gray-50 p-6"
               >
-                <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-lg bg-iieg-900/8">
+                <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-lg bg-iieg-100">
                   <svg
                     className="h-5 w-5 text-iieg-700"
                     fill="none"

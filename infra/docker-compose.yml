@@ -76,6 +76,10 @@ services:
       dockerfile: Dockerfile
     env_file:
       - ../.env
+    environment:
+      # Dentro de compose el proxy de Vite debe apuntar al servicio backend,
+      # no a localhost (que dentro del contenedor es el propio frontend).
+      VITE_BACKEND_URL: "http://backend:8000"
     ports:
       - "${FRONTEND_PORT:-5173}:5173"
     depends_on:
