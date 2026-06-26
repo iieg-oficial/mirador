@@ -79,23 +79,29 @@ El sistema debe permitir:
 * **shadcn/ui** o componentes propios institucionales
 * **React Hook Form + Zod**, para formularios y validación
 * **React-Grid-Layout**, para el canvas de dashboards
-* **Plotly.js o Apache ECharts**, para visualizaciones
+* **D3.js**, para visualizaciones
 * **MapLibre GL JS**, para mapas
 * **deck.gl**, para visualización geoespacial avanzada
 
-### Motor de gráficas recomendado
+### Motor de gráficas
 
-Para el MVP se recomienda iniciar con **Plotly.js usando react-plotly.js**, porque permite crear visualizaciones interactivas a partir de objetos JSON y tiene una curva de adopción razonable.
+El motor de gráficas es **D3.js**. Cada gráfica se renderiza construyendo SVG con D3
+(scales, axes, shapes, transiciones), lo que da control fino sobre el encoding visual,
+las interacciones (tooltips, zoom, brush) y las visualizaciones municipales a medida
+(mapas coropléticos, comparativos) que no ofrecen las librerías de gráficas estándar.
 
-A mediano plazo, considerar agregar soporte para **Apache ECharts** como segundo renderer, especialmente si los dashboards públicos contienen muchas gráficas o se necesita mejor rendimiento en navegador.
+Para implementar visualizaciones D3 hay un skill dedicado en `.claude/skills/d3js/` con el
+patrón de render, tipos de gráfica, escalas, interactividad y responsividad.
 
-La arquitectura debe permitir que una gráfica se guarde como una especificación JSON independiente del renderer. Por ejemplo:
+La arquitectura debe permitir que una gráfica se guarde como una especificación JSON
+independiente del renderer (el campo `renderer` queda como punto de extensión por si en el
+futuro se agrega un segundo motor):
 
-* `renderer = "plotly"`
-* `renderer = "echarts"`
-* `renderer = "vega_lite"`
+* `renderer = "d3"`  (único soportado en MVP)
 
-Esto permitirá migrar o soportar múltiples motores sin rehacer todo el sistema.
+D3 lee esa especificación (`chart_type`, `field_mapping`, `visual_config`) y genera el
+SVG. Mantener la gráfica como spec JSON desacoplada del motor permite, llegado el caso,
+soportar otros renderers sin rehacer el sistema.
 
 ---
 
@@ -523,7 +529,7 @@ Cada gráfica debe guardar:
 
 ```json
 {
-  "renderer": "plotly",
+  "renderer": "d3",
   "chart_type": "bar",
   "dataset_id": "uuid",
   "field_mapping": {
@@ -1307,7 +1313,7 @@ Debe incluir:
 * CRUD de datasets SQL.
 * Validación básica de SQL solo SELECT.
 * Preview de dataset.
-* CRUD de gráficas Plotly.
+* CRUD de gráficas D3.
 * Editor simple de dashboard con React-Grid-Layout.
 * Widget de gráfica.
 * Widget Markdown.
@@ -1345,7 +1351,7 @@ Agregar:
 * Programación de actualizaciones.
 * Alertas de errores.
 * Integración con Data Warehouse institucional.
-* Soporte para ECharts y/o Vega-Lite.
+* Soporte para renderers adicionales además de D3.js (a evaluar según necesidad).
 * Soporte para archivos Parquet/DuckDB.
 
 ---
@@ -1416,7 +1422,7 @@ Frontend:
 * React Router
 * Tailwind CSS
 * React-Grid-Layout
-* Plotly.js o react-plotly.js
+* D3.js
 
 Infra:
 
@@ -1538,7 +1544,7 @@ Los widgets iniciales deben ser:
 * MarkdownWidget
 * KpiWidget
 
-Las gráficas deben renderizarse con Plotly usando configuración JSON.
+Las gráficas deben renderizarse con D3.js a partir de su especificación JSON.
 
 ## Filtro municipal
 

@@ -16,7 +16,7 @@ La autenticación y la gestión de usuarios/roles/permisos se delegan a **Minerv
 
 - **Backend**: FastAPI · SQLModel · Alembic · PostgreSQL/PostGIS · Redis · Python 3.12+
 - **Frontend**: React · TypeScript · Vite · TanStack Query · Zustand · React Router ·
-  Tailwind · React-Grid-Layout · Plotly.js
+  Tailwind · React-Grid-Layout · D3.js
 - **Infra**: Docker · docker-compose
 
 ## Estructura del monorepo

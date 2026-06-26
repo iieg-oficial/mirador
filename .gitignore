@@ -27,6 +27,12 @@ pnpm-debug.log*
 !*/.env.example
 infra/**/*.secret
 
+# ----- Claude Code (solo se versiona la skill d3js del proyecto) -----
+.claude/*
+!.claude/skills/
+.claude/skills/*
+!.claude/skills/d3js/
+
 # ----- Editores / SO -----
 .idea/
 .vscode/
