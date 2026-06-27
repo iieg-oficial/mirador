@@ -14,20 +14,21 @@ RUN apt-get update \
 
 # Instala dependencias primero para aprovechar la caché de capas.
 COPY pyproject.toml ./
-# El PAT llega como secreto de BuildKit (no queda en capas de la imagen). Si se
-# provee, instala el extra `minerva`; si no, cae al set base `dev` (modo stub).
-#   build:  DOCKER_BUILDKIT=1 docker build --secret id=github_token,env=GITHUB_TOKEN ...
-#   compose lo pasa automáticamente (ver infra/docker-compose.yml).
+# El minerva-sdk (dependencia base, repo privado) requiere un PAT, que llega como
+# secreto de BuildKit (no queda en capas de la imagen). Es OBLIGATORIO: sin él el
+# build falla — Minerva no es opcional. Asegúrate de exportar GITHUB_TOKEN al
+# shell antes de construir (compose lo lee del entorno, no del .env):
+#   set -a && . ./.env && set +a && docker compose -f infra/docker-compose.yml build
 RUN --mount=type=secret,id=github_token \
     pip install --upgrade pip \
-    && if [ -s /run/secrets/github_token ]; then \
-         GIT_CONFIG_COUNT=1 \
-         GIT_CONFIG_KEY_0="url.https://x-access-token:$(cat /run/secrets/github_token)@github.com/.insteadOf" \
-         GIT_CONFIG_VALUE_0="https://github.com/" \
-         pip install -e ".[dev,minerva]"; \
-       else \
-         pip install -e ".[dev]"; \
-       fi
+    && if [ ! -s /run/secrets/github_token ]; then \
+         echo "ERROR: GITHUB_TOKEN vacío. El minerva-sdk es obligatorio y requiere un PAT." >&2; \
+         exit 1; \
+       fi \
+    && GIT_CONFIG_COUNT=1 \
+       GIT_CONFIG_KEY_0="url.https://x-access-token:$(cat /run/secrets/github_token)@github.com/.insteadOf" \
+       GIT_CONFIG_VALUE_0="https://github.com/" \
+       pip install -e ".[dev]"
 
 COPY . .
 

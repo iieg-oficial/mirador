@@ -1,9 +1,9 @@
 """Endpoints de auth (BFF). Ver `docs/api.md` §Auth.
 
-En modo `stub` no hay IdP: `/login` lleva directo al SPA y `/me` devuelve el
-usuario dev. En modo `minerva` se implementa el flujo OIDC Authorization Code + PKCE
-completo: generación de PKCE, almacenamiento de estado en Redis, canje de código
-y establecimiento de la cookie de sesión `tb_session`.
+Flujo OIDC Authorization Code + PKCE contra Minerva (única fuente de identidad):
+`/login` genera PKCE, guarda el estado en Redis y redirige a Minerva; `/callback`
+canjea el código y establece la cookie de sesión `tb_session`; `/logout` revoca y
+limpia. No hay modo alternativo ni "sin auth".
 """
 
 import secrets
@@ -14,7 +14,7 @@ from fastapi.responses import RedirectResponse
 
 from app.core.config import get_settings
 from app.modules.auth.deps import get_current_user
-from app.modules.auth.provider import CurrentUser
+from app.modules.auth.models import CurrentUser
 from app.modules.auth.session import SessionStore
 
 router = APIRouter()
@@ -25,25 +25,10 @@ async def me(user: CurrentUser = Depends(get_current_user)) -> CurrentUser:
     return user
 
 
-@router.get("/permissions")
-async def permissions(user: CurrentUser = Depends(get_current_user)) -> dict[str, list[str]]:
-    settings = get_settings()
-    if settings.AUTH_PROVIDER == "stub":
-        # "*" = el stub concede todo; el SPA puede tratarlo como acceso total.
-        return {"permissions": ["*"]}
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Permisos por recurso; usa los endpoints de /api/admin/* directamente.",
-    )
-
-
 @router.get("/login")
 async def login() -> RedirectResponse:
     settings = get_settings()
-    if settings.AUTH_PROVIDER == "stub":
-        return RedirectResponse(settings.FRONTEND_POST_LOGIN_URL)
 
-    # Flujo OIDC Authorization Code + PKCE
     from app.modules.auth.oidc import derive_code_challenge, generate_code_verifier
 
     verifier = generate_code_verifier()
@@ -74,8 +59,6 @@ async def login() -> RedirectResponse:
 @router.get("/callback")
 async def callback(request: Request) -> RedirectResponse:
     settings = get_settings()
-    if settings.AUTH_PROVIDER == "stub":
-        return RedirectResponse(settings.FRONTEND_POST_LOGIN_URL)
 
     code = request.query_params.get("code")
     state = request.query_params.get("state")
@@ -101,7 +84,7 @@ async def callback(request: Request) -> RedirectResponse:
         )
     store.delete(f"oidc:{state}")
 
-    from app.modules.auth.oidc import decode_jwt_payload, exchange_code_for_tokens
+    from app.modules.auth.oidc import exchange_code_for_tokens
 
     try:
         tokens = await exchange_code_for_tokens(settings, code, oidc_data["code_verifier"])
@@ -111,14 +94,11 @@ async def callback(request: Request) -> RedirectResponse:
             detail=f"Error al canjear el código con Minerva: {exc}",
         ) from exc
 
-    id_token = tokens.get("id_token", "")
-    claims = decode_jwt_payload(id_token) if id_token else {}
-
+    # La sesión BFF guarda solo los tokens; la identidad (sub/email/name/roles) se
+    # deriva en cada request decodificando el access_token con el SDK (firma
+    # RS256/JWKS verificada). Ver `minerva.resolve_user`.
     sid = secrets.token_urlsafe(32)
     session_data = {
-        "sub": claims.get("sub", ""),
-        "email": claims.get("email"),
-        "name": claims.get("name"),
         "access_token": tokens.get("access_token", ""),
         "refresh_token": tokens.get("refresh_token", ""),
     }
@@ -142,11 +122,10 @@ async def logout(request: Request, response: Response) -> None:
     sid = request.cookies.get(settings.SESSION_COOKIE_NAME)
     if sid:
         store = SessionStore()
-        if settings.AUTH_PROVIDER == "minerva":
-            session_data = store.get(f"session:{sid}")
-            if session_data and session_data.get("refresh_token"):
-                from app.modules.auth.oidc import revoke_token
+        session_data = store.get(f"session:{sid}")
+        if session_data and session_data.get("refresh_token"):
+            from app.modules.auth.oidc import revoke_token
 
-                await revoke_token(settings, session_data["refresh_token"])
+            await revoke_token(settings, session_data["refresh_token"])
         store.delete(f"session:{sid}")
     response.delete_cookie(settings.SESSION_COOKIE_NAME)

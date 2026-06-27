@@ -16,6 +16,7 @@ node_modules/
 dist/
 .vite/
 *.local
+*.tsbuildinfo
 npm-debug.log*
 yarn-error.log*
 pnpm-debug.log*

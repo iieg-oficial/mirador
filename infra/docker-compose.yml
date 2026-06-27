@@ -47,8 +47,9 @@ services:
     build:
       context: ../backend
       dockerfile: Dockerfile
-      # PAT para instalar el minerva-sdk (repo privado). Se toma de GITHUB_TOKEN
-      # del .env; si está vacío, el build cae al set base (modo stub).
+      # PAT para instalar el minerva-sdk (repo privado, dependencia OBLIGATORIA).
+      # Se toma de GITHUB_TOKEN del ENTORNO del shell (no del .env): exporta antes
+      # de construir con  set -a && . ./.env && set +a. Si va vacío el build falla.
       secrets:
         - github_token
     env_file:
@@ -93,8 +94,9 @@ volumes:
   postgres_data:
   redis_data:
 
-# Secreto de build con el PAT de GitHub para instalar el minerva-sdk privado.
-# Su valor se lee de la variable GITHUB_TOKEN del .env (puede ir vacío en dev).
+# Secreto de build con el PAT de GitHub para instalar el minerva-sdk privado
+# (obligatorio). Su valor se lee de la variable de entorno GITHUB_TOKEN del shell
+# (no del .env): expórtala antes de construir. El build falla si va vacía.
 secrets:
   github_token:
     environment: GITHUB_TOKEN

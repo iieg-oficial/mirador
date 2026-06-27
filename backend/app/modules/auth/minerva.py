@@ -1,93 +1,82 @@
-"""Proveedor de auth real contra Minerva (BFF/OIDC).
+"""Integración de auth con Minerva, montada sobre el `minerva-sdk` oficial.
 
-Implementa el flujo BFF completo: lee la cookie de sesión `tb_session`, consulta
-Redis para obtener el access_token del usuario, y verifica permisos contra la API
-de Minerva en tiempo real. Los permisos se cachean en Redis para minimizar llamadas
-al IdP (TTL configurado en `MINERVA_PERMISSIONS_CACHE_TTL`).
+Minerva es la **única** fuente de identidad y autorización; no hay proveedor
+alternativo ni modo "sin auth". Patrón BFF: el navegador solo ve la cookie
+`tb_session`; el access_token vive en Redis, server-side, y nunca sale del
+backend. Estas funciones lo recuperan y delegan TODA la validación al SDK,
+evitando reimplementar criptografía o el contrato de permisos:
 
-El canje de código y el almacenamiento inicial de sesión ocurren en
-`app.modules.auth.router` (endpoints /login y /callback).
+- **Identidad:** el SDK verifica la firma del access_token (RS256 contra el JWKS
+  público de Minerva, sin secreto compartido) y devuelve los claims.
+- **Autorización:** el SDK consulta `GET /api/v1/me/permissions` en tiempo real
+  (con caché y propagación de revocación), nunca compara roles localmente.
+
+El canje del código y el alta de la sesión en Redis ocurren en `router.py`
+(endpoints /login y /callback). El SDK lee su propia configuración
+(`MINERVA_ISSUER_URL`, `MINERVA_APPLICATION_CODE`, …) desde el entorno;
+docker-compose la inyecta vía `env_file`.
+
+El `import minerva_sdk` es perezoso (dentro de cada función) solo para poder
+importar la app en entornos de test/CI sin el paquete privado; en producción y
+desarrollo el SDK es obligatorio (dependencia base, ver `pyproject.toml`).
 """
 
-from typing import Any
-
-import httpx
 from fastapi import HTTPException, Request, status
+from fastapi.security import HTTPAuthorizationCredentials
 
-from app.core.config import Settings
-from app.modules.auth.provider import CurrentUser
+from app.core.config import get_settings
+from app.modules.auth.models import CurrentUser
 from app.modules.auth.session import SessionStore
 
+_sessions = SessionStore()
 
-class MinervaAuthProvider:
-    def __init__(self, settings: Settings) -> None:
-        self._settings = settings
-        self._sessions = SessionStore()
 
-    async def get_current_user(self, request: Request) -> CurrentUser:
-        sid = request.cookies.get(self._settings.SESSION_COOKIE_NAME)
-        if not sid:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="No hay sesión activa. Inicia sesión.",
-            )
-        session_data = self._sessions.get(f"session:{sid}")
-        if not session_data:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Sesión expirada o inválida.",
-            )
-        return CurrentUser(
-            sub=session_data.get("sub", ""),
-            email=session_data.get("email"),
-            name=session_data.get("name"),
+def _access_token(request: Request) -> str:
+    """Recupera el access_token de la sesión BFF o lanza 401."""
+    settings = get_settings()
+    sid = request.cookies.get(settings.SESSION_COOKIE_NAME)
+    if not sid:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="No hay sesión activa. Inicia sesión.",
         )
+    session = _sessions.get(f"session:{sid}")
+    if not session or not session.get("access_token"):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Sesión expirada o inválida.",
+        )
+    return str(session["access_token"])
 
-    async def check_permission(self, request: Request, user: CurrentUser, permission: str) -> None:
-        sid = request.cookies.get(self._settings.SESSION_COOKIE_NAME)
-        if not sid:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Sin sesión.")
-        session_data = self._sessions.get(f"session:{sid}")
-        if not session_data:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED, detail="Sesión expirada."
-            )
 
-        # Cache de permisos por usuario en Redis
-        cache_key = f"permissions:{user.sub}"
-        cached = self._sessions.get(cache_key)
-        if cached:
-            permissions: list[str] = cached.get("permissions", [])
-        else:
-            permissions = await self._fetch_permissions(session_data.get("access_token", ""))
-            self._sessions.set(
-                cache_key,
-                {"permissions": permissions},
-                self._settings.MINERVA_PERMISSIONS_CACHE_TTL,
-            )
+async def resolve_user(request: Request) -> CurrentUser:
+    """Resuelve la identidad del request validando el token con el SDK."""
+    from minerva_sdk.fastapi import get_current_user as sdk_get_current_user
 
-        if permission not in permissions:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Permiso requerido: {permission}",
-            )
+    token = _access_token(request)
+    claims = await sdk_get_current_user(
+        HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
+    )
+    # `roles` del token = slugs de los roles del usuario en esta aplicación
+    # (Minerva los calcula sobre app.slug=tablerillos al emitir el token).
+    # Vacío ⇒ no pertenece a Tablerillos (gate en require_app_access).
+    roles = claims.get("roles") or []
+    return CurrentUser(
+        sub=claims.get("sub", ""),
+        email=claims.get("email"),
+        name=claims.get("name"),
+        roles=[str(r) for r in roles],
+    )
 
-    async def _fetch_permissions(self, access_token: str) -> list[str]:
-        """Consulta los permisos del usuario actual en Minerva (API en tiempo real)."""
-        try:
-            async with httpx.AsyncClient() as client:
-                resp = await client.get(
-                    f"{self._settings.MINERVA_ISSUER_URL}/api/v1/me/permissions",
-                    params={"application": self._settings.MINERVA_APPLICATION_CODE},
-                    headers={"Authorization": f"Bearer {access_token}"},
-                    timeout=5.0,
-                )
-                resp.raise_for_status()
-                data: Any = resp.json()
-                items: list[Any] = data if isinstance(data, list) else data.get("permissions", [])
-                return [
-                    p.get("key", p) if isinstance(p, dict) else str(p) for p in items
-                ]
-        except Exception:
-            # Denegar por seguridad si Minerva no está disponible.
-            return []
+
+async def assert_permission(request: Request, user: CurrentUser, permission: str) -> None:
+    """Autoriza `permission` contra Minerva en tiempo real; lanza 403 si falta."""
+    from minerva_sdk.fastapi import require_permission as sdk_require_permission
+
+    settings = get_settings()
+    token = _access_token(request)
+    # Reusa la dependencia de permisos del SDK (validación en tiempo real +
+    # caché + revocación), alimentándola con los datos ya resueltos en vez de
+    # releer la cabecera Authorization (que en el modelo BFF no existe).
+    dependency = sdk_require_permission(permission, settings.MINERVA_APPLICATION_CODE)
+    await dependency(user={"sub": user.sub, "_token": token})

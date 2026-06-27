@@ -24,11 +24,15 @@ Razones:
    redirige a `{MINERVA_PUBLIC_ISSUER_URL}/auth/authorize`.
 3. Minerva autentica y redirige a `MINERVA_REDIRECT_URI`
    (`http://localhost:8000/api/auth/callback`).
-4. Backend valida `state`, canjea el código en `/auth/token`, valida el
-   `id_token` (RS256 vía JWKS, `nonce`, `aud`), crea sesión en Redis, setea la
-   cookie `tb_session` y redirige al SPA (`FRONTEND_POST_LOGIN_URL`).
-5. Cada request del SPA lleva la cookie; un dependency resuelve la sesión y pasa
-   el `access_token` al SDK (`require_permission`).
+4. Backend valida `state`, canjea el código en `/auth/token` (con `client_secret`),
+   guarda **solo los tokens** (`access_token` + `refresh_token`) en una sesión de
+   Redis, setea la cookie `tb_session` y redirige al SPA (`FRONTEND_POST_LOGIN_URL`).
+5. Cada request del SPA lleva la cookie; el `MinervaAuthProvider` resuelve la
+   sesión, recupera el `access_token` y lo pasa al **`minerva-sdk`**, que verifica
+   la firma (RS256/JWKS, `aud=tablerillos`) y devuelve la identidad
+   (`sub/email/name`). La autorización fina se consulta con `require_permission`
+   del SDK contra `GET /api/v1/me/permissions` (con caché). Tablerillos **no**
+   reimplementa criptografía ni el contrato de permisos: todo eso lo aporta el SDK.
 
 ## Dual-URL hacia Minerva (punto de fricción)
 

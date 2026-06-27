@@ -1,8 +1,12 @@
-"""Utilidades para el flujo OIDC Authorization Code + PKCE contra Minerva."""
+"""Flujo OIDC Authorization Code + PKCE contra Minerva (lado BFF).
+
+Solo cubre lo que el `minerva-sdk` NO provee: generación PKCE, canje del código
+por tokens y revocación. La validación de identidad/permisos a partir del
+access_token la hace el SDK (RS256/JWKS), no este módulo (ver `minerva.py`).
+"""
 
 import base64
 import hashlib
-import json
 import secrets
 from typing import Any
 
@@ -20,23 +24,6 @@ def derive_code_challenge(verifier: str) -> str:
     """Deriva el code_challenge S256 del verifier."""
     digest = hashlib.sha256(verifier.encode()).digest()
     return base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
-
-
-def decode_jwt_payload(token: str) -> dict[str, Any]:
-    """Extrae el payload de un JWT sin verificar la firma.
-
-    Los tokens son obtenidos directamente de Minerva vía un canje server-to-server
-    autenticado con client_secret, lo que garantiza su origen.
-    TODO(swap-minerva): agregar validación RS256 vía JWKS para producción.
-    """
-    parts = token.split(".")
-    if len(parts) < 2:
-        return {}
-    padded = parts[1] + "=" * (4 - len(parts[1]) % 4)
-    try:
-        return json.loads(base64.urlsafe_b64decode(padded))
-    except Exception:
-        return {}
 
 
 async def exchange_code_for_tokens(

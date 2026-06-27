@@ -11,7 +11,7 @@ import psycopg
 from sqlmodel import Session, select
 
 from app.core.security import decrypt_secret, encrypt_secret
-from app.modules.auth.provider import CurrentUser
+from app.modules.auth.models import CurrentUser
 from app.modules.connections.models import (
     Connection,
     ConnectionEngine,

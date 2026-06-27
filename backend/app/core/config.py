@@ -4,8 +4,10 @@ Carga todas las variables de entorno (ver `.env.example` en la raíz y en
 `backend/`) en un objeto `Settings` tipado. `get_settings()` está cacheado para
 que el parseo ocurra una sola vez por proceso.
 
-La llave del desacople respecto a Minerva es `AUTH_PROVIDER`: en desarrollo vale
-`stub` (no requiere el SDK ni el PAT); en producción debe valer `minerva`.
+La autenticación es **siempre** Minerva (OIDC + `minerva-sdk`): no hay proveedor
+alternativo ni modo "sin auth". Minerva suple el login y la gestión de usuarios
+que todo sistema institucional debe tener. En tests, la auth se sustituye con
+`dependency_overrides` (ver `app/tests/conftest.py`), nunca con un mock en la app.
 """
 
 from functools import lru_cache
@@ -25,14 +27,6 @@ class Settings(BaseSettings):
     # ----- App -----
     ENVIRONMENT: Literal["development", "staging", "production"] = "development"
     DEBUG: bool = True
-
-    # ----- Selección de proveedor de auth -----
-    # "stub"    → usuario dev local, concede permisos (solo desarrollo).
-    # "minerva" → BFF/OIDC real contra Minerva (requiere minerva-sdk + PAT).
-    AUTH_PROVIDER: Literal["stub", "minerva"] = "stub"
-    DEV_USER_SUB: str = "dev-local"
-    DEV_USER_EMAIL: str = "dev@local"
-    DEV_USER_NAME: str = "Desarrollador Local"
 
     # ----- Base de datos / Redis -----
     DATABASE_URL: str = (

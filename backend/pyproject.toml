@@ -22,6 +22,10 @@ dependencies = [
     "cryptography>=44.0",      # cifrado Fernet de credenciales de conexión
     "sqlglot>=25.0",          # parser SQL para validación SELECT-only
     "python-multipart>=0.0.12",
+    # SDK de Minerva: OBLIGATORIO. Minerva es la única fuente de identidad y
+    # autorización. Repo privado: requiere un PAT (GITHUB_TOKEN) para instalar
+    # (en Docker se pasa como secreto de BuildKit; ver Dockerfile).
+    "minerva-sdk @ git+https://github.com/iieg-oficial/minerva.git@develop#subdirectory=sdk",
 ]
 
 [project.optional-dependencies]
@@ -31,16 +35,17 @@ dev = [
     "ruff>=0.8",
     "mypy>=1.13",
 ]
-# SDK de Minerva: repo privado, se instala con un PAT (GITHUB_TOKEN). No es
-# dependencia base para que la instalación de dev funcione sin el token.
-#   pip install -e ".[dev,minerva]"
-minerva = [
-    "minerva-sdk @ git+https://github.com/iieg-oficial/minerva.git@develop#subdirectory=sdk",
-]
 
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+
+[tool.mypy]
+# El minerva-sdk se importa de forma perezosa y puede no estar instalado en el
+# entorno local de type-check (repo privado). No debe hacer fallar a mypy.
+[[tool.mypy.overrides]]
+module = ["minerva_sdk.*"]
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["app/tests"]

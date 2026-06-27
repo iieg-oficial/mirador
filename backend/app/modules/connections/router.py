@@ -18,7 +18,7 @@ from sqlmodel import Session
 
 from app.core.database import get_session
 from app.modules.auth.deps import require_permission
-from app.modules.auth.provider import CurrentUser
+from app.modules.auth.models import CurrentUser
 from app.modules.connections import service
 from app.modules.connections.models import Connection
 from app.modules.connections.schemas import (

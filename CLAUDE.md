@@ -10,9 +10,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 posteriores.
 
 **En progreso — Fase 1 (Bloques A+B):** ya existe la infraestructura backend
-(`app/core/config.py`, `database.py`, `security.py`, `app/shared/models.py`, Alembic) y
-la **abstracción de auth** (`app/modules/auth/`) con un proveedor *stub* para desarrollo.
-Pendiente en Fase 1: módulo de conexiones (Bloque C) y shell del frontend admin (Bloque E).
+(`app/core/config.py`, `database.py`, `security.py`, `app/shared/models.py`, Alembic) y la
+**auth contra Minerva** (`app/modules/auth/`) sobre el `minerva-sdk` oficial, con el flujo
+OIDC BFF completo (login/callback/logout) y gate de acceso por rol. El módulo de conexiones
+(Bloque C) y el shell del frontend admin (Bloque E) están implementados.
 
 La especificación de lo que se va a construir es autoritativa y vive en:
 - **`tablerillos.md`** — manual técnico completo (módulos, modelo de datos, API,
@@ -30,7 +31,10 @@ Monorepo: `backend/` (FastAPI), `frontend/` (React+Vite), `infra/` (compose).
 
 ### Stack completo (Docker)
 ```bash
-cp .env.example .env   # ajusta credenciales y datos de Minerva
+cp .env.example .env   # ajusta credenciales y datos de Minerva (incl. GITHUB_TOKEN)
+# El minerva-sdk es OBLIGATORIO (dep base, repo privado): exporta el PAT al shell
+# antes de construir — compose lo lee del entorno, no del .env.
+set -a && . ./.env && set +a
 docker compose -f infra/docker-compose.yml up --build
 # backend :8000 (/health, /docs)  ·  frontend :5173
 ```
@@ -39,8 +43,7 @@ docker compose -f infra/docker-compose.yml up --build
 Los comandos de Python corren en el entorno **conda `tab`** (`conda run -n tab <cmd>` o
 `conda activate tab`).
 ```bash
-conda run -n tab pip install -e ".[dev]"   # deps base + dev (sin minerva-sdk)
-conda run -n tab pip install -e ".[dev,minerva]"  # con SDK (requiere GITHUB_TOKEN/PAT)
+conda run -n tab pip install -e ".[dev]"   # deps base (incluye minerva-sdk) + dev
 conda run -n tab ruff check .              # lint
 conda run -n tab ruff format .             # formato (line-length 100)
 conda run -n tab mypy app                  # type check
@@ -71,21 +74,30 @@ pública sirve solo desde ese snapshot.
 Estados del dashboard: `borrador → in_review → aprobado → publicado → archivado`
 (ver el flujo de publicación en el manual).
 
-### Autenticación: BFF contra Minerva (no hay identidad local)
-- **Abstracción de auth (clave):** los módulos importan SIEMPRE desde
-  `app.modules.auth.deps` (`get_current_user`, `require_permission`), **nunca** desde
-  `minerva_sdk` ni desde `auth/minerva.py`. El proveedor concreto se elige con
-  `AUTH_PROVIDER` (`stub` en dev — usuario `dev-local`, concede todo, o restringe vía
-  header `X-Dev-Permissions`; `minerva` en prod). El `StubAuthProvider` se niega a
-  arrancar en producción. Así el desarrollo no depende del SDK ni del PAT.
+### Autenticación: BFF contra Minerva (OBLIGATORIO, no hay identidad local)
+- **Minerva es inamovible.** Es la única fuente de login, usuarios, roles y permisos —
+  suple lo que todo sistema institucional debe tener. **No hay** proveedor alternativo,
+  flag selector (`AUTH_PROVIDER`), ni modo "sin auth"/stub en el código de la app. Hay
+  Minerva en producción, una de dev para pruebas, y opcionalmente una local; el sistema
+  siempre habla con alguna.
+- **Punto de entrada único:** los módulos importan SIEMPRE desde
+  `app.modules.auth.deps` (`get_current_user`, `require_permission`, `require_app_access`),
+  **nunca** desde `minerva_sdk` ni desde `auth/minerva.py`. `deps.py` delega en
+  `auth/minerva.py`, que se monta sobre el **`minerva-sdk` oficial** (no se reimplementa
+  criptografía ni el contrato de permisos).
 - **No existen tablas `users`/`roles`/`permissions`.** Identidad y autorización viven en
-  Minerva (OIDC, Authorization Code + PKCE). Con `AUTH_PROVIDER=minerva`, los permisos se
-  consultan a Minerva en tiempo real vía `minerva_sdk` (import perezoso en
-  `auth/minerva.py`); **nunca se comparan roles localmente**. El flujo OIDC real está
-  pendiente (marcado con `TODO(swap-minerva)`).
-- **minerva-sdk** es un extra opcional (`pip install -e ".[dev,minerva]"`), repo privado
-  que requiere `GITHUB_TOKEN` (PAT). En Docker se pasa como secreto de BuildKit; si está
-  vacío, el build cae al set base y corre en modo stub.
+  Minerva (OIDC, Authorization Code + PKCE). El SDK verifica la firma del access_token
+  (RS256/JWKS) y consulta permisos en tiempo real (`GET /api/v1/me/permissions`, con
+  caché); **nunca se comparan roles localmente**.
+- **Gate de acceso por rol:** `require_app_access` exige que Minerva haya asignado al
+  usuario ≥1 rol en `tablerillos` (claim `roles` del token). Sin rol → 403, antes de los
+  permisos finos. Tener cuenta en Minerva no basta para entrar al panel.
+- **minerva-sdk** es **dependencia base** (no extra), repo privado que requiere
+  `GITHUB_TOKEN` (PAT). En Docker se pasa como secreto de BuildKit; si va vacío, el
+  build **falla** (no es opcional). El `import minerva_sdk` es perezoso solo para poder
+  importar la app en tests/CI sin el paquete.
+- **Auth en tests:** se sustituye con `app.dependency_overrides` + un no-op de permisos
+  en `app/tests/conftest.py`. Es el **único** lugar con mocks de auth.
 - Modelo **BFF**: el backend FastAPI canjea el código y guarda los tokens server-side
   (sesión en Redis, cookie `httpOnly` `tb_session`). El navegador nunca ve tokens.
 - `created_by` almacena el `sub` de Minerva (+ `created_by_email`). Tabla `user_profiles`
