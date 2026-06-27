@@ -1,11 +1,14 @@
 import { useEffect } from 'react'
 import { Outlet } from 'react-router-dom'
 import { useAuth } from './useAuth'
+import { AccessDenied } from './AccessDenied'
 
 export function AuthGuard() {
-  const { isPending, isAuthenticated } = useAuth()
+  const { isPending, isAuthenticated, hasAccess } = useAuth()
 
   useEffect(() => {
+    // Sin sesión → al login de Minerva. (Con sesión pero sin rol NO redirige:
+    // reloguear no daría acceso; se muestra la pantalla "sin acceso").
     if (!isPending && !isAuthenticated) {
       window.location.href = '/api/auth/login'
     }
@@ -20,6 +23,9 @@ export function AuthGuard() {
   }
 
   if (!isAuthenticated) return null
+
+  // Autenticado en Minerva pero sin rol asignado en Tablerillos.
+  if (!hasAccess) return <AccessDenied />
 
   return <Outlet />
 }

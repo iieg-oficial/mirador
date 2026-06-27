@@ -16,9 +16,13 @@ export function useAuth() {
     staleTime: 5 * 60 * 1000,
   })
 
+  const user = query.data ?? null
+
   return {
-    user: query.data ?? null,
+    user,
     isPending: query.isPending,
-    isAuthenticated: query.data != null,
+    isAuthenticated: user != null,
+    // Tener sesión no basta: Minerva debe haber asignado algún rol en Tablerillos.
+    hasAccess: user != null && user.roles.length > 0,
   }
 }
