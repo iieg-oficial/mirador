@@ -18,9 +18,14 @@ from app.modules.connections.models import (
     ConnectionStatus,
 )
 from app.modules.connections.schemas import (
+    ColumnInfo,
     ConnectionCreate,
     ConnectionTestResult,
     ConnectionUpdate,
+    SchemaGroup,
+    SchemaObject,
+    SchemaObjectType,
+    SchemaResponse,
 )
 
 # Motores que se prueban abriendo una conexión psycopg.
@@ -134,3 +139,102 @@ def _persist_test(
     session.add(connection)
     session.commit()
     session.refresh(connection)
+
+
+# ── Exploración de esquema ────────────────────────────────────────────────────
+
+
+def _make_conninfo(connection: Connection) -> str:
+    password = decrypt_secret(connection.encrypted_password)
+    return psycopg.conninfo.make_conninfo(
+        host=connection.host,
+        port=connection.port,
+        dbname=connection.database,
+        user=connection.username,
+        password=password,
+        connect_timeout=_CONNECT_TIMEOUT_SECONDS,
+        sslmode="require" if connection.ssl_enabled else "prefer",
+    )
+
+
+def get_schema(connection: Connection) -> SchemaResponse:
+    """Lista esquemas, tablas, vistas y vistas materializadas de la BD externa."""
+    if connection.engine not in _POSTGRES_ENGINES:
+        raise ValueError(
+            f"Exploración de esquema no disponible para el motor '{connection.engine.value}'."
+        )
+
+    schema_map: dict[str, list[SchemaObject]] = {}
+
+    with psycopg.connect(_make_conninfo(connection)) as conn:
+        conn.read_only = True
+        with conn.cursor() as cur:
+            # Hardcodeamos los esquemas del sistema; no son entrada de usuario.
+            cur.execute("""
+                SELECT table_schema, table_name, table_type
+                FROM information_schema.tables
+                WHERE table_schema NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+                ORDER BY table_schema, table_name
+            """)
+            for schema, name, t in cur.fetchall():
+                schema_map.setdefault(schema, []).append(
+                    SchemaObject(
+                        name=name,
+                        type=SchemaObjectType.view if t == "VIEW" else SchemaObjectType.table,
+                    )
+                )
+
+            cur.execute("""
+                SELECT schemaname, matviewname
+                FROM pg_matviews
+                WHERE schemaname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+                ORDER BY schemaname, matviewname
+            """)
+            for schema, name in cur.fetchall():
+                schema_map.setdefault(schema, []).append(
+                    SchemaObject(name=name, type=SchemaObjectType.materialized_view)
+                )
+
+    return SchemaResponse(
+        schemas=[SchemaGroup(name=s, objects=objs) for s, objs in sorted(schema_map.items())]
+    )
+
+
+def get_columns(connection: Connection, schema_name: str, object_name: str) -> list[ColumnInfo]:
+    """Devuelve columnas de una tabla, vista o vista materializada externa."""
+    if connection.engine not in _POSTGRES_ENGINES:
+        raise ValueError(
+            f"Inspección de columnas no disponible para el motor '{connection.engine.value}'."
+        )
+
+    with psycopg.connect(_make_conninfo(connection)) as conn:
+        conn.read_only = True
+        with conn.cursor() as cur:
+            # pg_attribute cubre tablas, vistas Y vistas materializadas.
+            cur.execute(
+                """
+                SELECT
+                    a.attname,
+                    pg_catalog.format_type(a.atttypid, a.atttypmod),
+                    NOT a.attnotnull,
+                    pg_get_expr(d.adbin, d.adrelid)
+                FROM pg_catalog.pg_attribute a
+                LEFT JOIN pg_catalog.pg_attrdef d
+                    ON (a.attrelid = d.adrelid AND a.attnum = d.adnum)
+                WHERE a.attrelid = (
+                    SELECT c.oid
+                    FROM pg_catalog.pg_class c
+                    JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                    WHERE n.nspname = %s AND c.relname = %s
+                )
+                AND a.attnum > 0 AND NOT a.attisdropped
+                ORDER BY a.attnum
+                """,
+                (schema_name, object_name),
+            )
+            rows = cur.fetchall()
+
+    return [
+        ColumnInfo(name=name, data_type=dtype, nullable=nullable, default=default)
+        for name, dtype, nullable, default in rows
+    ]
