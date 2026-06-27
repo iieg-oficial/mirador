@@ -5,6 +5,7 @@ Separación clave (§9.1): la contraseña entra en texto plano (`ConnectionCreat
 `encrypted_password` ni una cadena de conexión.
 """
 
+import enum
 import uuid
 from datetime import datetime
 
@@ -73,3 +74,35 @@ class ConnectionTestResult(BaseModel):
     success: bool
     status: ConnectionStatus
     detail: str | None = None
+
+
+# ── Exploración de esquema ────────────────────────────────────────────────────
+
+
+class SchemaObjectType(str, enum.Enum):
+    table = "table"
+    view = "view"
+    materialized_view = "materialized_view"
+
+
+class ColumnInfo(BaseModel):
+    name: str
+    data_type: str
+    nullable: bool
+    default: str | None = None
+
+
+class SchemaObject(BaseModel):
+    name: str
+    type: SchemaObjectType
+
+
+class SchemaGroup(BaseModel):
+    """Un esquema de PostgreSQL con sus objetos (tablas, vistas, vistas mat.)."""
+
+    name: str
+    objects: list[SchemaObject]
+
+
+class SchemaResponse(BaseModel):
+    schemas: list[SchemaGroup]

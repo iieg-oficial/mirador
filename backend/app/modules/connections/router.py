@@ -22,10 +22,12 @@ from app.modules.auth.models import CurrentUser
 from app.modules.connections import service
 from app.modules.connections.models import Connection
 from app.modules.connections.schemas import (
+    ColumnInfo,
     ConnectionCreate,
     ConnectionRead,
     ConnectionTestResult,
     ConnectionUpdate,
+    SchemaResponse,
 )
 
 router = APIRouter()
@@ -93,3 +95,44 @@ def test_connection(
 ) -> ConnectionTestResult:
     connection = _get_or_404(session, connection_id)
     return service.test_connection(session, connection)
+
+
+@router.get("/{connection_id}/schema", response_model=SchemaResponse)
+def get_schema(
+    connection_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    _: CurrentUser = Depends(require_permission("tablerillos.connections.view")),
+) -> SchemaResponse:
+    connection = _get_or_404(session, connection_id)
+    try:
+        return service.get_schema(connection)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"No se pudo inspeccionar el esquema: {exc}",
+        )
+
+
+@router.get(
+    "/{connection_id}/schema/{schema_name}/{object_name}/columns",
+    response_model=list[ColumnInfo],
+)
+def get_columns(
+    connection_id: uuid.UUID,
+    schema_name: str,
+    object_name: str,
+    session: Session = Depends(get_session),
+    _: CurrentUser = Depends(require_permission("tablerillos.connections.view")),
+) -> list[ColumnInfo]:
+    connection = _get_or_404(session, connection_id)
+    try:
+        return service.get_columns(connection, schema_name, object_name)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"No se pudieron obtener las columnas: {exc}",
+        )
