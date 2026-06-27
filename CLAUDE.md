@@ -4,22 +4,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Estado del proyecto
 
-**Fase 0 — andamiaje.** El repo es actualmente un esqueleto: el backend solo expone
-`/health`, el frontend muestra un placeholder, y los módulos (`backend/app/modules/*`,
-`frontend/src/features/*`) son paquetes vacíos. Los módulos se implementan en fases
-posteriores.
+**Implementado:**
+- Infraestructura base (compose, Dockerfile, Alembic, health check)
+- Auth contra Minerva (OIDC BFF completo, gate de rol, `minerva-sdk`)
+- Conexiones a BD (CRUD, prueba, explorador de esquema + UI completa)
+- Shell del frontend admin (layout, routing, AuthGuard, AccessDenied)
 
-**En progreso — Fase 1 (Bloques A+B):** ya existe la infraestructura backend
-(`app/core/config.py`, `database.py`, `security.py`, `app/shared/models.py`, Alembic) y la
-**auth contra Minerva** (`app/modules/auth/`) sobre el `minerva-sdk` oficial, con el flujo
-OIDC BFF completo (login/callback/logout) y gate de acceso por rol. El módulo de conexiones
-(Bloque C) y el shell del frontend admin (Bloque E) están implementados.
+**Pendiente:** datasets, sql_guard, gráficas (ECharts), dashboards, publicación, filtros, API pública, municipios, exportación, auditoría.
 
 La especificación de lo que se va a construir es autoritativa y vive en:
 - **`tablerillos.md`** — manual técnico completo (módulos, modelo de datos, API,
   estados, decisiones de diseño). Es la fuente principal al implementar cualquier módulo.
-- **`docs/`** — stubs por tema (`architecture`, `api`, `database`, `security`,
-  `auth-minerva`, `development`) que resumen y se irán completando.
+- **`docs/`** — arquitectura, despliegue, documentación por módulo, checklist v1.0.
 - **`integracion.md`** — contrato de integración con Minerva (el IdP externo).
 
 Al implementar, **consulta el manual antes de inventar** estructuras, nombres de
@@ -129,14 +125,13 @@ SPA React/TS con dos áreas: panel admin (`/admin`) y vistas públicas (`/`). En
 proxya `/api` al backend para que la cookie de sesión BFF funcione sin CORS (ver
 `frontend/vite.config.ts`). Organizado por feature en `src/features/*`. Stack clave:
 TanStack Query (datos), Zustand (estado), React-Grid-Layout (canvas de dashboards),
-**D3.js** (gráficas), DOMPurify (sanitización de Markdown público).
+**Apache ECharts 5** (gráficas), DOMPurify (sanitización de Markdown público).
 
-Las gráficas se renderizan con **D3.js** (no Plotly ni ECharts). Una gráfica se guarda
-como especificación JSON independiente del renderer (`renderer: "d3"`, `chart_type`,
-`field_mapping`, `visual_config`); D3 lee esa spec y construye el SVG. Para implementar
-visualizaciones D3, usa el skill `d3js` (`.claude/skills/d3js/`), que documenta el patrón
-de render (selección → scales → axes → `.join()`), tipos de gráfica, interactividad y
-responsividad.
+Las gráficas se renderizan con **Apache ECharts** (`echarts` v5). Una gráfica se guarda
+como especificación JSON independiente del renderer (`renderer: "echarts"`, `chart_type`,
+`field_mapping`, `visual_config`); el componente de render transforma esa spec en una
+opción de ECharts y la monta vía `echarts.init()`. ECharts incluye sus propios tipos
+TypeScript — no se necesita `@types/echarts`.
 
 ## Convenciones
 
