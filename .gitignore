@@ -29,7 +29,12 @@ pnpm-debug.log*
 infra/**/*.secret
 
 # ----- Claude Code -----
-.claude/
+.claude/*
+!.claude/agents/
+!.claude/skills/
+.claude/skills/*
+!.claude/skills/doc-modulo/
+!.claude/skills/nuevo-modulo/
 
 # ----- Editores / SO -----
 .idea/
