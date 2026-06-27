@@ -41,8 +41,6 @@ const NAV: NavItem[] = [
   {
     to: '/admin/datasets',
     label: 'Datasets',
-    disabled: true,
-    badge: 'pronto',
     icon: (
       <path
         strokeLinecap="round"

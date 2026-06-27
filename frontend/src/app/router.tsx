@@ -5,6 +5,7 @@ import { AuthGuard } from '@/features/auth/AuthGuard'
 import { AdminLayout } from '@/features/admin/AdminLayout'
 import { AdminHome } from '@/features/admin/AdminHome'
 import { ConexionesPage } from '@/features/connections/ConexionesPage'
+import { DatasetsPage } from '@/features/datasets/DatasetsPage'
 
 export const router = createBrowserRouter([
   {
@@ -26,6 +27,7 @@ export const router = createBrowserRouter([
         children: [
           { index: true, element: <AdminHome /> },
           { path: 'conexiones', element: <ConexionesPage /> },
+          { path: 'datasets', element: <DatasetsPage /> },
         ],
       },
     ],
