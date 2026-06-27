@@ -54,18 +54,25 @@ Estado de módulos para la primera versión pública.
 
 ## Datasets (Módulo: datasets)
 
-- [ ] Modelo de datos (`Dataset`, `DatasetParameter`)
-- [ ] Migración Alembic
-- [ ] `sql_guard.py` — validación SELECT-only (sqlglot + blacklist + timeout)
-- [ ] CRUD de datasets
-- [ ] Validar query SQL antes de guardar
-- [ ] Previsualización de resultados (primeras N filas)
-- [ ] Ejecución parametrizada (`:param`)
-- [ ] `query_execution_logs` — auditoría de cada ejecución
-- [ ] Límite de filas por ejecución
-- [ ] Tests de sql_guard y ejecución
-- [ ] Frontend — formulario de dataset con editor SQL
-- [ ] Frontend — previsualización de resultados en tabla
+- [x] Modelo de datos (`Dataset` con estados y JSONB para esquemas)
+- [x] Migración Alembic — `0002_datasets.py`
+- [x] `sql_guard.py` — validación SELECT-only (sqlglot + blacklist)
+- [x] CRUD de datasets (baja lógica → archived)
+- [x] Validar query SQL antes de guardar (`validate_sql` en create + update)
+- [x] `POST /{id}/validate` — valida SQL contra la BD real, infiere columnas y parámetros
+- [x] `POST /{id}/preview` — ejecución del dataset guardado con max_rows
+- [x] `POST /playground` — ejecución ad-hoc sin guardar dataset
+- [x] Ejecución parametrizada (`:param` → bind variables psycopg)
+- [x] Total de registros en cada ejecución (`SELECT COUNT(*) FROM (<query>)`)
+- [x] Límite de filas por ejecución (`max_rows`, configurable por dataset)
+- [x] Transacción READ ONLY + statement_timeout en toda ejecución
+- [x] Frontend — playground SQL con selector de conexión y max_rows
+- [x] Frontend — tabla de resultados con estadísticas (total/columnas/ms)
+- [x] Frontend — formulario modal para guardar como dataset
+- [x] Frontend — lista de datasets guardados con acciones (validar, editar, archivar)
+- [x] **Documentación** — `docs/modules/datasets.md`
+- [ ] `query_execution_logs` — auditoría de cada ejecución (pendiente)
+- [ ] Tests de sql_guard y ejecución (pendiente)
 
 ---
 
