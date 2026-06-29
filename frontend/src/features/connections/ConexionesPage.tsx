@@ -74,41 +74,35 @@ function ConexionCard({
   return (
     <div
       onClick={onSelect}
-      className={`cursor-pointer rounded-lg border p-4 transition-all hover:shadow-sm ${
+      className={`cursor-pointer rounded-xl border p-4 transition-all ${
         selected
-          ? 'border-iieg-500 bg-iieg-50 shadow-sm'
-          : 'border-gray-200 bg-white hover:border-gray-300'
+          ? 'border-iieg-400 bg-iieg-50 shadow-sm'
+          : 'border-gray-200 bg-white hover:border-gray-300 hover:shadow-sm'
       }`}
     >
-      {/* Fila superior */}
-      <div className="flex items-start gap-2.5">
+      {/* Fila superior: estado + nombre */}
+      <div className="flex items-center gap-2">
         <Semaforo status={connection.status} testing={testing} />
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold text-gray-900">{connection.name}</p>
-          <p className="mt-0.5 text-xs text-gray-500">
-            {connection.host}:{connection.port}/{connection.database}
-          </p>
-        </div>
-        <span className="flex-shrink-0 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-500">
-          {ENGINE_LABELS[connection.engine] ?? connection.engine}
-        </span>
+        <p className="flex-1 truncate text-sm font-semibold text-gray-900">{connection.name}</p>
       </div>
 
-      {/* Descripción */}
-      {connection.description && (
-        <p className="mt-2 text-xs text-gray-400 line-clamp-1">{connection.description}</p>
-      )}
+      {/* Motor y ruta */}
+      <p className="mt-1 text-xs text-gray-500">
+        {ENGINE_LABELS[connection.engine] ?? connection.engine}
+        {' · '}
+        {connection.host}:{connection.port}/{connection.database}
+      </p>
 
       {/* Error de última prueba */}
       {connection.status === 'error' && connection.last_test_error && (
-        <p className="mt-2 rounded bg-red-50 px-2 py-1 text-[11px] text-red-600 line-clamp-2">
+        <p className="mt-1.5 rounded bg-red-50 px-2 py-1 text-[11px] text-red-600 line-clamp-1">
           {connection.last_test_error}
         </p>
       )}
 
       {/* Acciones */}
       <div
-        className="mt-3 flex items-center justify-end gap-1"
+        className="mt-3 flex items-center gap-1"
         onClick={(e) => e.stopPropagation()}
       >
         {confirmDelete ? (
@@ -116,13 +110,13 @@ function ConexionCard({
             <span className="mr-1 text-xs text-red-600">¿Eliminar?</span>
             <button
               onClick={onDelete}
-              className="rounded bg-red-600 px-2 py-1 text-xs font-medium text-white hover:bg-red-700"
+              className="rounded-lg bg-red-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-red-700"
             >
               Confirmar
             </button>
             <button
               onClick={() => setConfirmDelete(false)}
-              className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50"
+              className="rounded-lg border border-gray-200 px-2.5 py-1 text-xs text-gray-600 hover:bg-gray-50"
             >
               Cancelar
             </button>
@@ -132,29 +126,36 @@ function ConexionCard({
             <button
               onClick={onTest}
               disabled={testing}
-              title="Probar conexión"
-              className="rounded border border-gray-200 px-2.5 py-1 text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+              className="flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-50 disabled:opacity-50"
             >
+              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
+              </svg>
               {testing ? 'Probando…' : 'Probar'}
             </button>
-            <button
-              onClick={onEdit}
-              title="Editar"
-              className="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
-            >
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-              </svg>
-            </button>
-            <button
-              onClick={() => setConfirmDelete(true)}
-              title="Eliminar"
-              className="rounded p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-500"
-            >
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-              </svg>
-            </button>
+            <div className="ml-auto flex items-center gap-0.5">
+              <button
+                onClick={onEdit}
+                title="Editar"
+                className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600"
+              >
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                    d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+              </button>
+              <button
+                onClick={() => setConfirmDelete(true)}
+                title="Eliminar"
+                className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-500"
+              >
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                    d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+                </svg>
+              </button>
+            </div>
           </>
         )}
       </div>
@@ -204,16 +205,16 @@ export function ConexionesPage() {
     <>
       <div className="flex h-full flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-gray-200 bg-white px-6 py-4">
+        <div className="flex items-center justify-between border-b border-gray-100 bg-white px-6 py-4">
           <div>
-            <h1 className="text-lg font-semibold text-gray-900">Conexiones a bases de datos</h1>
-            <p className="text-xs text-gray-500">
-              Fuentes de datos para crear datasets y visualizaciones
+            <h1 className="text-lg font-bold text-gray-900">Conexiones a bases de datos</h1>
+            <p className="text-sm text-gray-500">
+              Administra y explora las fuentes de datos disponibles.
             </p>
           </div>
           <button
             onClick={() => setFormState({ mode: 'create' })}
-            className="flex items-center gap-1.5 rounded-lg bg-iieg-700 px-3 py-2 text-sm font-medium text-white hover:bg-iieg-600"
+            className="flex items-center gap-1.5 rounded-lg bg-iieg-700 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-iieg-600"
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -225,7 +226,32 @@ export function ConexionesPage() {
         {/* Contenido */}
         <div className="flex flex-1 overflow-hidden">
           {/* Lista de conexiones */}
-          <div className="w-96 flex-shrink-0 overflow-y-auto border-r border-gray-200 bg-gray-50 p-4">
+          <div className="w-80 flex-shrink-0 overflow-y-auto border-r border-gray-100 bg-white">
+            {/* Sub-header con búsqueda */}
+            <div className="border-b border-gray-100 px-4 py-3">
+              <p className="mb-2 text-xs font-semibold text-gray-600">
+                Conexiones ({visibles.length})
+              </p>
+              <div className="flex gap-2">
+                <div className="flex flex-1 items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-1.5">
+                  <svg className="h-3.5 w-3.5 flex-shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                  <input
+                    type="text"
+                    placeholder="Buscar conexión…"
+                    className="flex-1 bg-transparent text-xs text-gray-700 placeholder-gray-400 focus:outline-none"
+                  />
+                </div>
+                <select className="rounded-lg border border-gray-200 bg-gray-50 px-2 py-1.5 text-xs text-gray-600 focus:outline-none">
+                  <option>Todas</option>
+                  <option>Activas</option>
+                  <option>Con error</option>
+                </select>
+              </div>
+            </div>
+            <div className="p-3">
             {isLoading && (
               <div className="flex items-center gap-2 py-8 text-sm text-gray-400">
                 <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -272,6 +298,7 @@ export function ConexionesPage() {
                   onDelete={() => deleteMutation.mutate(conn.id)}
                 />
               ))}
+            </div>
             </div>
           </div>
 
