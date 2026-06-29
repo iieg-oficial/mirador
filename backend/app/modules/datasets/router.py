@@ -129,7 +129,12 @@ def preview_dataset(
     connection = _get_connection_or_404(session, obj.connection_id)
     try:
         return service.run_query(
-            connection, obj.sql_query, body.params, obj.max_rows
+            connection,
+            obj.sql_query,
+            body.params,
+            obj.max_rows,
+            dataset_id=str(obj.id),
+            cache_ttl_seconds=obj.cache_ttl_seconds,
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))

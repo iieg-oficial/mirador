@@ -6,6 +6,7 @@ import { AdminLayout } from '@/features/admin/AdminLayout'
 import { AdminHome } from '@/features/admin/AdminHome'
 import { ConexionesPage } from '@/features/connections/ConexionesPage'
 import { DatasetsPage } from '@/features/datasets/DatasetsPage'
+import { GraficasPage } from '@/features/charts/GraficasPage'
 
 export const router = createBrowserRouter([
   {
@@ -28,6 +29,7 @@ export const router = createBrowserRouter([
           { index: true, element: <AdminHome /> },
           { path: 'conexiones', element: <ConexionesPage /> },
           { path: 'datasets', element: <DatasetsPage /> },
+          { path: 'graficas', element: <GraficasPage /> },
         ],
       },
     ],

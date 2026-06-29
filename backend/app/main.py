@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import get_settings
 from app.modules.auth.router import router as auth_router
+from app.modules.charts.router import router as charts_router
 from app.modules.connections.router import router as connections_router
 from app.modules.datasets.router import router as datasets_router
 
@@ -31,6 +32,7 @@ app.add_middleware(
 app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
 app.include_router(connections_router, prefix="/api/admin/connections", tags=["connections"])
 app.include_router(datasets_router, prefix="/api/admin/datasets", tags=["datasets"])
+app.include_router(charts_router, prefix="/api/admin/charts", tags=["charts"])
 
 
 @app.get("/health", tags=["meta"])

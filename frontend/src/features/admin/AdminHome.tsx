@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useAuth } from '@/features/auth/useAuth'
 import { listConexiones } from '@/features/connections/api'
 import { listDatasets } from '@/features/datasets/api'
+import { listCharts } from '@/features/charts/api'
 
 interface StatCard {
   label: string
@@ -32,7 +33,7 @@ const ICON_GRID =
 const QUICK_ACTIONS: QuickAction[] = [
   { to: '/admin/conexiones', label: 'Nueva conexión', iconPath: ICON_DB, available: true },
   { to: '/admin/datasets', label: 'Nuevo dataset', iconPath: ICON_FILE, available: true },
-  { to: '/admin/graficas', label: 'Crear gráfica', iconPath: ICON_CHART, available: false },
+  { to: '/admin/graficas', label: 'Crear gráfica', iconPath: ICON_CHART, available: true },
   { to: '/admin/tableros', label: 'Nuevo tablero', iconPath: ICON_GRID, available: false },
 ]
 
@@ -57,9 +58,16 @@ export function AdminHome() {
     queryFn: listDatasets,
   })
 
-  const activas = conexiones?.filter((c) => c.status === 'activa').length ?? 0
-  const totalConn = conexiones?.length ?? 0
+  const { data: charts, isLoading: loadingCharts } = useQuery({
+    queryKey: ['charts'],
+    queryFn: listCharts,
+  })
+
+  const noArchivadas = conexiones?.filter((c) => c.status !== 'archivada') ?? []
+  const activas = noArchivadas.filter((c) => c.status === 'activa').length
+  const totalConn = noArchivadas.length
   const totalDs = datasets?.length ?? 0
+  const totalCharts = charts?.length ?? 0
 
   const STATS: StatCard[] = [
     {
@@ -81,9 +89,10 @@ export function AdminHome() {
     {
       label: 'Gráficas creadas',
       iconPath: ICON_CHART,
-      value: '—',
-      description: 'Próximamente',
-      available: false,
+      value: loadingCharts ? '…' : totalCharts,
+      description: 'Visualizaciones en ECharts',
+      to: '/admin/graficas',
+      available: true,
     },
     {
       label: 'Tableros publicados',

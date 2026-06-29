@@ -1,0 +1,752 @@
+import { useState, useCallback } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { listDatasets, previewDataset } from '@/features/datasets/api'
+import { listCharts, createChart, updateChart, deleteChart } from './api'
+import { ChartRenderer } from './ChartRenderer'
+import { ChartTypePicker } from './ChartTypePicker'
+import type { Chart, ChartType, FieldMapping, VisualConfig } from '@/types/charts'
+import type { Dataset, ColumnMeta, PreviewResult } from '@/types/datasets'
+import { CHART_TYPE_LABELS } from '@/types/charts'
+
+// ── Constantes ────────────────────────────────────────────────────────────────
+
+const CHART_TYPES: ChartType[] = [
+  'bar',
+  'bar_horizontal',
+  'line',
+  'area',
+  'pie',
+  'donut',
+  'scatter',
+]
+
+// ── Helpers UI ────────────────────────────────────────────────────────────────
+
+function Select({
+  label,
+  value,
+  onChange,
+  options,
+  placeholder = 'Selecciona…',
+  required,
+}: {
+  label: string
+  value: string
+  onChange: (v: string) => void
+  options: { value: string; label: string }[]
+  placeholder?: string
+  required?: boolean
+}) {
+  return (
+    <div className="flex flex-col gap-1">
+      <label className="text-xs font-semibold text-gray-600">
+        {label}
+        {required && <span className="ml-0.5 text-red-500">*</span>}
+      </label>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:border-iieg-400 focus:outline-none"
+      >
+        <option value="">{placeholder}</option>
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    </div>
+  )
+}
+
+function Toggle({
+  label,
+  value,
+  onChange,
+}: {
+  label: string
+  value: boolean
+  onChange: (v: boolean) => void
+}) {
+  return (
+    <div className="flex items-center justify-between">
+      <span className="text-xs font-semibold text-gray-600">{label}</span>
+      <button
+        type="button"
+        onClick={() => onChange(!value)}
+        className={`relative inline-flex h-5 w-9 flex-shrink-0 rounded-full border-2 border-transparent transition-colors ${
+          value ? 'bg-iieg-600' : 'bg-gray-200'
+        }`}
+      >
+        <span
+          className={`inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${
+            value ? 'translate-x-4' : 'translate-x-0'
+          }`}
+        />
+      </button>
+    </div>
+  )
+}
+
+// ── Tarjeta de gráfica guardada ───────────────────────────────────────────────
+
+function ChartCard({
+  chart,
+  datasets,
+  onEdit,
+  onDelete,
+}: {
+  chart: Chart
+  datasets: Dataset[]
+  onEdit: () => void
+  onDelete: () => void
+}) {
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const dataset = datasets.find((d) => d.id === chart.dataset_id)
+
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-shadow hover:shadow">
+      <div className="mb-3 flex items-start justify-between gap-2">
+        <p className="text-sm font-semibold text-gray-900 leading-tight">{chart.name}</p>
+        <span className="flex-shrink-0 rounded-full bg-iieg-100 px-2 py-0.5 text-[11px] font-medium text-iieg-700">
+          {CHART_TYPE_LABELS[chart.chart_type] ?? chart.chart_type}
+        </span>
+      </div>
+
+      {chart.description && (
+        <p className="mb-2 text-xs text-gray-500 line-clamp-2">{chart.description}</p>
+      )}
+
+      <p className="text-xs text-gray-400">
+        Dataset:{' '}
+        <span className="font-medium text-gray-600">{dataset?.name ?? '—'}</span>
+      </p>
+      <p className="mt-0.5 text-xs text-gray-400">
+        Creada: {new Date(chart.created_at).toLocaleDateString('es-MX')}
+      </p>
+
+      <div className="mt-3 flex items-center gap-1.5">
+        {confirmDelete ? (
+          <>
+            <span className="text-xs text-red-600">¿Eliminar?</span>
+            <button
+              onClick={onDelete}
+              className="rounded-lg bg-red-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-red-700"
+            >
+              Confirmar
+            </button>
+            <button
+              onClick={() => setConfirmDelete(false)}
+              className="rounded-lg border border-gray-200 px-2.5 py-1 text-xs text-gray-600 hover:bg-gray-50"
+            >
+              Cancelar
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              onClick={onEdit}
+              className="flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50"
+            >
+              Editar
+            </button>
+            <button
+              onClick={() => setConfirmDelete(true)}
+              className="ml-auto rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+            >
+              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={1.5}
+                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                />
+              </svg>
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── Builder (nueva gráfica / editar) ─────────────────────────────────────────
+
+interface BuilderState {
+  name: string
+  description: string
+  datasetId: string
+  chartType: ChartType
+  fieldX: string
+  fieldY: string
+  fieldSeries: string
+  title: string
+  subtitle: string
+  showLegend: boolean
+  legendPosition: 'top' | 'bottom' | 'left' | 'right'
+}
+
+const BUILDER_DEFAULTS: BuilderState = {
+  name: '',
+  description: '',
+  datasetId: '',
+  chartType: 'bar',
+  fieldX: '',
+  fieldY: '',
+  fieldSeries: '',
+  title: '',
+  subtitle: '',
+  showLegend: true,
+  legendPosition: 'top',
+}
+
+function builderFromChart(chart: Chart): BuilderState {
+  const fm = chart.field_mapping
+  const vc = chart.visual_config
+  return {
+    name: chart.name,
+    description: chart.description ?? '',
+    datasetId: chart.dataset_id,
+    chartType: chart.chart_type,
+    fieldX: fm.x ?? '',
+    fieldY: fm.y ?? '',
+    fieldSeries: fm.series ?? '',
+    title: vc.title ?? '',
+    subtitle: vc.subtitle ?? '',
+    showLegend: vc.show_legend ?? true,
+    legendPosition: vc.legend_position ?? 'top',
+  }
+}
+
+function ChartBuilder({
+  editingChart,
+  initialChartType,
+  datasets,
+  onSaved,
+  onCancel,
+}: {
+  editingChart: Chart | null
+  initialChartType: ChartType
+  datasets: Dataset[]
+  onSaved: () => void
+  onCancel: () => void
+}) {
+  const qc = useQueryClient()
+  const [state, setState] = useState<BuilderState>(
+    editingChart
+      ? builderFromChart(editingChart)
+      : { ...BUILDER_DEFAULTS, chartType: initialChartType },
+  )
+  const [previewData, setPreviewData] = useState<PreviewResult | null>(null)
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [previewError, setPreviewError] = useState<string | null>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
+
+  const set = useCallback(
+    <K extends keyof BuilderState>(key: K, value: BuilderState[K]) => {
+      setState((prev) => ({ ...prev, [key]: value }))
+    },
+    [],
+  )
+
+  const selectedDataset = datasets.find((d) => d.id === state.datasetId) ?? null
+  const previewColumns: ColumnMeta[] = previewData?.columns ?? []
+  const columnOptions = previewColumns.map((c) => ({ value: c.name, label: c.name }))
+
+  const canPreview =
+    state.datasetId && state.fieldX && state.fieldY
+  const canSave =
+    state.name.trim() && state.datasetId && state.chartType && state.fieldX && state.fieldY
+
+  async function runPreview() {
+    if (!state.datasetId) return
+    setPreviewLoading(true)
+    setPreviewError(null)
+    try {
+      const result = await previewDataset(state.datasetId)
+      setPreviewData(result)
+    } catch (err) {
+      setPreviewError((err as Error).message)
+    } finally {
+      setPreviewLoading(false)
+    }
+  }
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const fieldMapping: FieldMapping = {
+        x: state.fieldX,
+        y: state.fieldY,
+        series: state.fieldSeries || null,
+      }
+      const visualConfig: VisualConfig = {
+        title: state.title || null,
+        subtitle: state.subtitle || null,
+        show_legend: state.showLegend,
+        legend_position: state.legendPosition,
+      }
+      if (editingChart) {
+        return updateChart(editingChart.id, {
+          name: state.name,
+          description: state.description || null,
+          chart_type: state.chartType,
+          field_mapping: fieldMapping,
+          visual_config: visualConfig,
+        })
+      }
+      return createChart({
+        dataset_id: state.datasetId,
+        name: state.name,
+        description: state.description || null,
+        chart_type: state.chartType,
+        field_mapping: fieldMapping,
+        visual_config: visualConfig,
+      })
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['charts'] })
+      onSaved()
+    },
+    onError: (err) => setSaveError((err as Error).message),
+  })
+
+  const fieldMapping: FieldMapping = {
+    x: state.fieldX,
+    y: state.fieldY,
+    series: state.fieldSeries || undefined,
+  }
+  const visualConfig: VisualConfig = {
+    title: state.title || undefined,
+    subtitle: state.subtitle || undefined,
+    show_legend: state.showLegend,
+    legend_position: state.legendPosition,
+  }
+
+  const showChart =
+    previewData &&
+    previewData.rows.length > 0 &&
+    state.fieldX &&
+    state.fieldY &&
+    previewData.columns.some((c) => c.name === state.fieldX) &&
+    previewData.columns.some((c) => c.name === state.fieldY)
+
+  return (
+    <div className="flex h-full flex-col overflow-hidden">
+      {/* Config row */}
+      <div className="border-b border-gray-100 bg-white px-6 py-4">
+        <div className="grid grid-cols-4 gap-4">
+          <div className="col-span-1 flex flex-col gap-1">
+            <label className="text-xs font-semibold text-gray-600">
+              Nombre<span className="ml-0.5 text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              value={state.name}
+              onChange={(e) => set('name', e.target.value)}
+              placeholder="Nombre de la gráfica"
+              className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-iieg-400 focus:outline-none"
+            />
+          </div>
+          <div className="col-span-1 flex flex-col gap-1">
+            <label className="text-xs font-semibold text-gray-600">Descripción</label>
+            <input
+              type="text"
+              value={state.description}
+              onChange={(e) => set('description', e.target.value)}
+              placeholder="Descripción opcional"
+              className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-iieg-400 focus:outline-none"
+            />
+          </div>
+          <Select
+            label="Dataset"
+            required
+            value={state.datasetId}
+            onChange={(v) => {
+              set('datasetId', v)
+              setPreviewData(null)
+              set('fieldX', '')
+              set('fieldY', '')
+              set('fieldSeries', '')
+            }}
+            options={datasets.map((d) => ({ value: d.id, label: d.name }))}
+          />
+          <Select
+            label="Tipo de visualización"
+            required
+            value={state.chartType}
+            onChange={(v) => set('chartType', v as ChartType)}
+            options={CHART_TYPES.map((t) => ({ value: t, label: CHART_TYPE_LABELS[t] }))}
+          />
+        </div>
+      </div>
+
+      {/* Main: 3 columnas */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Izquierda: mapeo de campos */}
+        <div className="w-52 flex-shrink-0 space-y-4 overflow-y-auto border-r border-gray-100 bg-white p-4">
+          <p className="text-xs font-bold uppercase tracking-wider text-gray-400">
+            Mapeo de campos
+          </p>
+
+          <Select
+            label="Eje X (categoría)"
+            value={state.fieldX}
+            onChange={(v) => set('fieldX', v)}
+            options={columnOptions}
+            placeholder="Selecciona campo…"
+          />
+          <Select
+            label="Eje Y (valor)"
+            value={state.fieldY}
+            onChange={(v) => set('fieldY', v)}
+            options={columnOptions}
+            placeholder="Selecciona campo…"
+          />
+          <Select
+            label="Serie (opcional)"
+            value={state.fieldSeries}
+            onChange={(v) => set('fieldSeries', v)}
+            options={columnOptions}
+            placeholder="Sin agrupación"
+          />
+
+          {!state.datasetId && (
+            <p className="text-xs text-gray-400">Selecciona un dataset para ver las columnas.</p>
+          )}
+          {state.datasetId && !previewData && (
+            <p className="text-xs text-gray-400">
+              Carga el dataset con "Actualizar vista" para ver las columnas disponibles.
+            </p>
+          )}
+
+          {selectedDataset && (
+            <div className="rounded-lg bg-gray-50 p-2.5 text-xs text-gray-500">
+              <p className="font-semibold text-gray-700">{selectedDataset.name}</p>
+              <p className="mt-0.5">{selectedDataset.max_rows} filas máx.</p>
+            </div>
+          )}
+        </div>
+
+        {/* Centro: vista previa */}
+        <div className="flex flex-1 flex-col overflow-hidden bg-gray-50">
+          <div className="flex items-center justify-between border-b border-gray-100 bg-white px-4 py-2.5">
+            <p className="text-sm font-semibold text-gray-700">Vista previa</p>
+            <button
+              onClick={runPreview}
+              disabled={!state.datasetId || previewLoading}
+              className="flex items-center gap-1.5 rounded-lg bg-iieg-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-iieg-600 disabled:opacity-40"
+            >
+              {previewLoading ? (
+                <>
+                  <svg className="h-3.5 w-3.5 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 12a8 8 0 018-8V0" />
+                  </svg>
+                  Cargando…
+                </>
+              ) : (
+                <>
+                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                      d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  Actualizar vista
+                </>
+              )}
+            </button>
+          </div>
+
+          <div className="flex-1 p-4">
+            {previewError && (
+              <div className="rounded-lg bg-red-50 p-4 text-sm text-red-700">{previewError}</div>
+            )}
+
+            {!previewError && showChart && (
+              <div className="h-full min-h-[300px] rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+                <ChartRenderer
+                  chartType={state.chartType}
+                  fieldMapping={fieldMapping}
+                  visualConfig={visualConfig}
+                  rows={previewData!.rows}
+                />
+              </div>
+            )}
+
+            {!previewError && !showChart && !previewLoading && (
+              <div className="flex h-full items-center justify-center">
+                <div className="text-center">
+                  <svg
+                    className="mx-auto mb-3 h-12 w-12 text-gray-200"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={1}
+                      d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"
+                    />
+                  </svg>
+                  <p className="text-sm text-gray-400">
+                    {!state.datasetId
+                      ? 'Selecciona un dataset para comenzar'
+                      : !state.fieldX || !state.fieldY
+                      ? 'Elige los campos X e Y y haz clic en "Actualizar vista"'
+                      : 'Haz clic en "Actualizar vista" para cargar los datos'}
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {previewData && (
+            <div className="border-t border-gray-100 bg-white px-4 py-2 text-xs text-gray-400">
+              {previewData.total_rows ?? previewData.rows.length} filas
+              {previewData.truncated && ' (truncado)'}
+              {' · '}
+              {previewData.elapsed_ms.toFixed(0)} ms
+              {' · '}
+              {previewData.columns.length} columnas
+            </div>
+          )}
+        </div>
+
+        {/* Derecha: config visual */}
+        <div className="w-56 flex-shrink-0 space-y-4 overflow-y-auto border-l border-gray-100 bg-white p-4">
+          <p className="text-xs font-bold uppercase tracking-wider text-gray-400">
+            Configuración visual
+          </p>
+
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold text-gray-600">Título</label>
+            <input
+              type="text"
+              value={state.title}
+              onChange={(e) => set('title', e.target.value)}
+              placeholder="Título de la gráfica"
+              className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-iieg-400 focus:outline-none"
+            />
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold text-gray-600">Subtítulo</label>
+            <input
+              type="text"
+              value={state.subtitle}
+              onChange={(e) => set('subtitle', e.target.value)}
+              placeholder="Subtítulo opcional"
+              className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-iieg-400 focus:outline-none"
+            />
+          </div>
+
+          <Toggle
+            label="Mostrar leyenda"
+            value={state.showLegend}
+            onChange={(v) => set('showLegend', v)}
+          />
+
+          {state.showLegend && (
+            <Select
+              label="Posición de la leyenda"
+              value={state.legendPosition}
+              onChange={(v) => set('legendPosition', v as BuilderState['legendPosition'])}
+              options={[
+                { value: 'top', label: 'Arriba' },
+                { value: 'bottom', label: 'Abajo' },
+                { value: 'left', label: 'Izquierda' },
+                { value: 'right', label: 'Derecha' },
+              ]}
+            />
+          )}
+        </div>
+      </div>
+
+      {/* Footer */}
+      <div className="flex items-center justify-between border-t border-gray-100 bg-white px-6 py-3">
+        <button
+          onClick={onCancel}
+          className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"
+        >
+          Cancelar
+        </button>
+        <div className="flex items-center gap-3">
+          {saveError && (
+            <p className="text-xs text-red-600">{saveError}</p>
+          )}
+          <button
+            onClick={() => saveMutation.mutate()}
+            disabled={!canSave || saveMutation.isPending}
+            className="flex items-center gap-1.5 rounded-lg bg-iieg-700 px-4 py-2 text-sm font-medium text-white hover:bg-iieg-600 disabled:opacity-40"
+          >
+            {saveMutation.isPending ? 'Guardando…' : editingChart ? 'Actualizar gráfica' : 'Guardar gráfica'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Página principal ──────────────────────────────────────────────────────────
+
+type Tab = 'list' | 'picker' | 'builder'
+
+export function GraficasPage() {
+  const qc = useQueryClient()
+  const [tab, setTab] = useState<Tab>('list')
+  const [editingChart, setEditingChart] = useState<Chart | null>(null)
+  const [pickerType, setPickerType] = useState<ChartType | null>(null)
+
+  const { data: charts = [], isLoading: loadingCharts } = useQuery({
+    queryKey: ['charts'],
+    queryFn: listCharts,
+  })
+
+  const { data: datasets = [] } = useQuery({
+    queryKey: ['datasets'],
+    queryFn: listDatasets,
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: deleteChart,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['charts'] }),
+  })
+
+  function openPicker() {
+    setEditingChart(null)
+    setPickerType(null)
+    setTab('picker')
+  }
+
+  function openBuilder(chart?: Chart) {
+    setEditingChart(chart ?? null)
+    setTab('builder')
+  }
+
+  function closeAll() {
+    setEditingChart(null)
+    setPickerType(null)
+    setTab('list')
+  }
+
+  // Tab label para la pestaña activa (picker o builder)
+  const creatorLabel = editingChart
+    ? `Editar: ${editingChart.name}`
+    : tab === 'picker'
+    ? 'Nueva gráfica'
+    : pickerType
+    ? `Nueva gráfica`
+    : 'Nueva gráfica'
+
+  const inCreator = tab === 'picker' || tab === 'builder'
+
+  return (
+    <div className="flex h-full flex-col">
+      {/* Header */}
+      <div className="flex items-center justify-between border-b border-gray-100 bg-white px-6 py-4">
+        <div>
+          <h1 className="text-lg font-bold text-gray-900">Gráficas</h1>
+          <p className="text-sm text-gray-500">Crea y gestiona visualizaciones a partir de tus datasets.</p>
+        </div>
+        {tab === 'list' && (
+          <button
+            onClick={openPicker}
+            className="flex items-center gap-1.5 rounded-lg bg-iieg-700 px-4 py-2 text-sm font-medium text-white hover:bg-iieg-600"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            Nueva gráfica
+          </button>
+        )}
+      </div>
+
+      {/* Tabs */}
+      <div className="flex gap-6 border-b border-gray-100 bg-white px-6">
+        <button
+          onClick={closeAll}
+          className={`border-b-2 pb-3 pt-3 text-sm font-medium transition-colors ${
+            tab === 'list'
+              ? 'border-iieg-600 text-iieg-700'
+              : 'border-transparent text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          Mis gráficas
+        </button>
+        {inCreator && (
+          <button
+            className="border-b-2 border-iieg-600 pb-3 pt-3 text-sm font-medium text-iieg-700"
+          >
+            {creatorLabel}
+          </button>
+        )}
+      </div>
+
+      {/* Contenido */}
+      <div className="flex-1 overflow-hidden">
+        {tab === 'list' && (
+          <div className="h-full overflow-y-auto p-6">
+            {loadingCharts && (
+              <p className="text-sm text-gray-400">Cargando gráficas…</p>
+            )}
+
+            {!loadingCharts && charts.length === 0 && (
+              <div className="flex h-64 flex-col items-center justify-center gap-3 text-center">
+                <svg className="h-12 w-12 text-gray-200" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1}
+                    d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
+                </svg>
+                <div>
+                  <p className="text-sm font-medium text-gray-500">Sin gráficas</p>
+                  <p className="mt-0.5 text-xs text-gray-400">
+                    Crea una gráfica a partir de un dataset para comenzar
+                  </p>
+                </div>
+                <button
+                  onClick={openPicker}
+                  className="mt-2 rounded-lg border border-iieg-300 px-3 py-1.5 text-xs font-medium text-iieg-700 hover:bg-iieg-50"
+                >
+                  Nueva gráfica
+                </button>
+              </div>
+            )}
+
+            {charts.length > 0 && (
+              <div className="grid grid-cols-3 gap-4 xl:grid-cols-4">
+                {charts.map((chart) => (
+                  <ChartCard
+                    key={chart.id}
+                    chart={chart}
+                    datasets={datasets}
+                    onEdit={() => openBuilder(chart)}
+                    onDelete={() => deleteMutation.mutate(chart.id)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {tab === 'picker' && (
+          <ChartTypePicker
+            selected={pickerType}
+            onSelect={setPickerType}
+            onConfirm={() => {
+              if (pickerType) openBuilder()
+            }}
+            onCancel={closeAll}
+          />
+        )}
+
+        {tab === 'builder' && (
+          <ChartBuilder
+            editingChart={editingChart}
+            initialChartType={editingChart ? editingChart.chart_type : (pickerType ?? 'bar')}
+            datasets={datasets}
+            onSaved={closeAll}
+            onCancel={closeAll}
+          />
+        )}
+      </div>
+    </div>
+  )
+}
