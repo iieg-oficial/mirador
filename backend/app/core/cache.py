@@ -43,7 +43,7 @@ def get_cached(dataset_id: str, params: dict[str, Any]) -> dict | None:
     try:
         raw = get_redis().get(_make_key(dataset_id, params))
         return json.loads(raw) if raw else None
-    except (RedisError, Exception) as exc:
+    except RedisError as exc:
         log.warning("Cache GET falló, se omite: %s", exc)
         return None
 
@@ -61,18 +61,23 @@ def set_cached(
         get_redis().setex(
             _make_key(dataset_id, params),
             ttl_seconds,
-            json.dumps(data, default=str),
+            json.dumps(data),
         )
-    except (RedisError, Exception) as exc:
+    except RedisError as exc:
         log.warning("Cache SET falló, se omite: %s", exc)
 
 
 def invalidate(dataset_id: str) -> None:
-    """Elimina todas las entradas de cache de un dataset (por patrón de key)."""
+    """Elimina todas las entradas de cache de un dataset (por patrón de key).
+
+    Usa SCAN (cursor incremental) en vez de KEYS: KEYS es O(N) sobre todo el
+    keyspace y bloquea Redis mientras corre; con más datasets cacheados se
+    vuelve un problema real en producción.
+    """
     try:
         r = get_redis()
-        keys = r.keys(f"ds:{dataset_id}:*")
+        keys = list(r.scan_iter(match=f"ds:{dataset_id}:*", count=100))
         if keys:
             r.delete(*keys)
-    except (RedisError, Exception) as exc:
+    except RedisError as exc:
         log.warning("Cache INVALIDATE falló, se omite: %s", exc)

@@ -172,7 +172,7 @@ def run_query(
     if dataset_id and cache_ttl_seconds > 0:
         cached = get_cached(dataset_id, params)
         if cached is not None:
-            return PreviewResult(**cached)
+            return PreviewResult.model_validate(cached)
 
     validate_sql(sql)
     psycopg_sql = _named_to_psycopg(normalize_sql(sql))
@@ -200,15 +200,21 @@ def run_query(
             raw_rows = raw_rows[:max_rows]
             col_names = [c.name for c in col_meta]
 
-            # Contar total de filas (best-effort; si falla no bloquea la respuesta).
-            total_rows: int | None = None
-            try:
-                count_sql = f"SELECT COUNT(*) FROM ({psycopg_sql}) AS _cnt"
-                cur.execute(count_sql, psycopg_params)
-                count_row = cur.fetchone()
-                total_rows = int(count_row[0]) if count_row else None
-            except Exception:  # noqa: BLE001
-                pass
+            # Contar total de filas. Si no hubo truncamiento, len(raw_rows) ya
+            # es el total exacto — evita un segundo roundtrip a la BD externa
+            # (REVISION_CODIGO.md #7). Solo se ejecuta el COUNT(*) extra cuando
+            # sí se truncó (ahí sí hace falta para saber el total real).
+            if truncated:
+                total_rows: int | None = None
+                try:
+                    count_sql = f"SELECT COUNT(*) FROM ({psycopg_sql}) AS _cnt"
+                    cur.execute(count_sql, psycopg_params)
+                    count_row = cur.fetchone()
+                    total_rows = int(count_row[0]) if count_row else None
+                except Exception:  # noqa: BLE001
+                    pass
+            else:
+                total_rows = len(raw_rows)
 
     elapsed_ms = (time.monotonic() - t0) * 1000
 
@@ -219,12 +225,17 @@ def run_query(
         truncated=truncated,
         elapsed_ms=round(elapsed_ms, 1),
     )
+    # Serialización JSON-safe aplicada siempre, tanto si se cachea como si no:
+    # garantiza que un hit y un miss devuelvan exactamente el mismo shape de
+    # tipos (datetime/Decimal → str), en vez de depender de si pasó por Redis
+    # (REVISION_CODIGO.md #6).
+    json_safe = result.model_dump(mode="json")
 
     # ── Cache store ────────────────────────────────────────────────────────────
     if dataset_id and cache_ttl_seconds > 0:
-        set_cached(dataset_id, params, result.model_dump(), cache_ttl_seconds)
+        set_cached(dataset_id, params, json_safe, cache_ttl_seconds)
 
-    return result
+    return PreviewResult.model_validate(json_safe)
 
 
 # ── Helpers internos ──────────────────────────────────────────────────────────
