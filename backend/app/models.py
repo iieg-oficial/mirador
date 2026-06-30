@@ -10,3 +10,4 @@ from app.shared.models import UUIDAuditBase  # noqa: F401
 # A medida que se implementan los módulos, registrar sus tablas:
 from app.modules.connections.models import Connection  # noqa: F401,E402
 from app.modules.datasets.models import Dataset  # noqa: F401,E402
+from app.modules.charts.models import Chart  # noqa: F401,E402

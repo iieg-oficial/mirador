@@ -7,9 +7,9 @@ renderer, chart_type, field_mapping, visual_config.
 import uuid
 
 from sqlalchemy import Column
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field
 
+from app.core.db_types import JSONVariant
 from app.shared.models import UUIDAuditBase
 
 
@@ -24,9 +24,9 @@ class Chart(UUIDAuditBase, table=True):
     renderer: str = Field(default="echarts", max_length=20)
     chart_type: str = Field(max_length=40)
     field_mapping: dict = Field(
-        sa_column=Column(JSONB, nullable=False, server_default="{}")
+        sa_column=Column(JSONVariant, nullable=False, server_default="{}")
     )
     visual_config: dict = Field(
-        sa_column=Column(JSONB, nullable=False, server_default="{}")
+        sa_column=Column(JSONVariant, nullable=False, server_default="{}")
     )
     status: str = Field(default="draft", max_length=20)

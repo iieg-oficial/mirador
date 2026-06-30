@@ -23,9 +23,15 @@ _BLACKLIST = re.compile(
 )
 
 
+def normalize_sql(sql: str) -> str:
+    """Quita espacios y un ';' final (típico al copiar/pegar SQL). No toca
+    statements internos: si hay más de uno, validate_sql lo seguirá rechazando."""
+    return sql.strip().rstrip(";").strip()
+
+
 def validate_sql(sql: str) -> None:
     """Valida que `sql` sea un SELECT seguro. Lanza ValueError si no lo es."""
-    sql = sql.strip()
+    sql = normalize_sql(sql)
     if not sql:
         raise ValueError("La consulta no puede estar vacía.")
     if len(sql) > _MAX_SQL_LENGTH:

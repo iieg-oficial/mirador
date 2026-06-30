@@ -3,7 +3,7 @@ import { useForm } from 'react-hook-form'
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query'
 import { createDataset, updateDataset } from './api'
 import { listConexiones } from '@/features/connections/api'
-import type { Dataset, DatasetCreate } from '@/types/datasets'
+import type { Dataset, DatasetCreate, DatasetUpdate } from '@/types/datasets'
 
 interface FormValues {
   connection_id: string
@@ -75,6 +75,19 @@ export function DatasetForm({ editing, prefill, onClose }: Props) {
 
   const mutation = useMutation({
     mutationFn: (values: FormValues) => {
+      if (isEdit) {
+        // connection_id y slug son inmutables tras crear el dataset: el backend
+        // los ignora en DatasetUpdate (ver REVISION_CODIGO.md #11), así que ni
+        // siquiera se envían.
+        const payload: DatasetUpdate = {
+          name: values.name,
+          description: values.description || null,
+          sql_query: values.sql_query,
+          max_rows: values.max_rows,
+          cache_ttl_seconds: values.cache_ttl_seconds,
+        }
+        return updateDataset(editing!.id, payload)
+      }
       const payload: DatasetCreate = {
         connection_id: values.connection_id,
         name: values.name,
@@ -84,9 +97,7 @@ export function DatasetForm({ editing, prefill, onClose }: Props) {
         max_rows: values.max_rows,
         cache_ttl_seconds: values.cache_ttl_seconds,
       }
-      return isEdit
-        ? updateDataset(editing!.id, payload)
-        : createDataset(payload)
+      return createDataset(payload)
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['datasets'] })
@@ -114,7 +125,8 @@ export function DatasetForm({ editing, prefill, onClose }: Props) {
             <label className="text-sm font-medium text-gray-700">Conexión *</label>
             <select
               {...register('connection_id', { required: 'Requerido' })}
-              className="rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-iieg-500 focus:outline-none"
+              disabled={isEdit}
+              className="rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-iieg-500 focus:outline-none disabled:bg-gray-100 disabled:text-gray-500"
             >
               <option value="">— selecciona —</option>
               {conexiones
@@ -125,6 +137,9 @@ export function DatasetForm({ editing, prefill, onClose }: Props) {
                   </option>
                 ))}
             </select>
+            {isEdit && (
+              <p className="text-xs text-gray-400">No se puede cambiar tras crear el dataset.</p>
+            )}
             {errors.connection_id && (
               <p className="text-xs text-red-600">{errors.connection_id.message}</p>
             )}
@@ -149,9 +164,13 @@ export function DatasetForm({ editing, prefill, onClose }: Props) {
                   maxLength: { value: 120, message: 'Máximo 120 caracteres' },
                   pattern: { value: /^[a-z0-9_-]+$/, message: 'Solo letras minúsculas, números, _ y -' },
                 })}
-                className="rounded-md border border-gray-300 px-3 py-2 font-mono text-sm focus:border-iieg-500 focus:outline-none"
+                disabled={isEdit}
+                className="rounded-md border border-gray-300 px-3 py-2 font-mono text-sm focus:border-iieg-500 focus:outline-none disabled:bg-gray-100 disabled:text-gray-500"
                 placeholder="poblacion_municipal"
               />
+              {isEdit && (
+                <p className="text-xs text-gray-400">No se puede cambiar tras crear el dataset.</p>
+              )}
               {errors.slug && <p className="text-xs text-red-600">{errors.slug.message}</p>}
             </div>
           </div>

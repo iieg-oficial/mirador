@@ -3,6 +3,7 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session
 
 from app.core.database import get_session
@@ -56,11 +57,22 @@ def create_dataset(
     session: Session = Depends(get_session),
     user: CurrentUser = Depends(require_permission("tablerillos.datasets.create")),
 ) -> Dataset:
-    _get_connection_or_404(session, data.connection_id)
+    connection = _get_connection_or_404(session, data.connection_id)
     try:
-        return service.create_dataset(session, data, user)
+        return service.create_dataset(session, data, user, connection)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+    except IntegrityError as exc:
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Ya existe un dataset con ese slug.",
+        ) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Error al validar contra la BD: {exc}",
+        )
 
 
 @router.get("/{dataset_id}", response_model=DatasetRead)
@@ -80,10 +92,16 @@ def update_dataset(
     _: CurrentUser = Depends(require_permission("tablerillos.datasets.update")),
 ) -> Dataset:
     obj = _get_or_404(session, dataset_id)
+    connection = _get_connection_or_404(session, obj.connection_id)
     try:
-        return service.update_dataset(session, obj, data)
+        return service.update_dataset(session, obj, data, connection)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Error al validar contra la BD: {exc}",
+        )
 
 
 @router.delete("/{dataset_id}", status_code=status.HTTP_204_NO_CONTENT)

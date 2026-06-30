@@ -17,7 +17,7 @@ from sqlmodel import Session, select
 
 from app.core.cache import get_cached, invalidate, set_cached
 from app.core.security import decrypt_secret
-from app.core.sql_guard import validate_sql
+from app.core.sql_guard import normalize_sql, validate_sql
 from app.modules.auth.models import CurrentUser
 from app.modules.connections.models import Connection, ConnectionEngine
 from app.modules.datasets.models import Dataset, DatasetStatus
@@ -53,12 +53,20 @@ def get_dataset(session: Session, dataset_id: uuid.UUID) -> Dataset | None:
     return session.get(Dataset, dataset_id)
 
 
-def create_dataset(session: Session, data: DatasetCreate, user: CurrentUser) -> Dataset:
+def create_dataset(
+    session: Session, data: DatasetCreate, user: CurrentUser, connection: Connection
+) -> Dataset:
     validate_sql(data.sql_query)
+    payload = data.model_dump()
+    payload["sql_query"] = normalize_sql(payload["sql_query"])
+    cols, params = _infer_schema(connection, payload["sql_query"])
     obj = Dataset(
-        **data.model_dump(),
+        **payload,
         created_by=user.sub,
         created_by_email=user.email,
+        columns_schema={"columns": cols},
+        parameters_schema={"params": [{"name": p} for p in params]},
+        status=DatasetStatus.validated,
     )
     session.add(obj)
     session.commit()
@@ -66,10 +74,17 @@ def create_dataset(session: Session, data: DatasetCreate, user: CurrentUser) -> 
     return obj
 
 
-def update_dataset(session: Session, obj: Dataset, data: DatasetUpdate) -> Dataset:
+def update_dataset(
+    session: Session, obj: Dataset, data: DatasetUpdate, connection: Connection
+) -> Dataset:
     fields = data.model_dump(exclude_unset=True)
     if "sql_query" in fields:
         validate_sql(fields["sql_query"])
+        fields["sql_query"] = normalize_sql(fields["sql_query"])
+        cols, params = _infer_schema(connection, fields["sql_query"])
+        fields["columns_schema"] = {"columns": cols}
+        fields["parameters_schema"] = {"params": [{"name": p} for p in params]}
+        fields["status"] = DatasetStatus.validated
     for key, value in fields.items():
         setattr(obj, key, value)
     session.add(obj)
@@ -89,15 +104,16 @@ def delete_dataset(session: Session, obj: Dataset) -> None:
 # ── Validación activa ─────────────────────────────────────────────────────────
 
 
-def validate_dataset(session: Session, obj: Dataset, connection: Connection) -> Dataset:
-    """Valida el SQL contra la BD real e infiere columnas. Actualiza status → validated."""
+def _infer_schema(connection: Connection, sql: str) -> tuple[list[dict[str, str]], list[str]]:
+    """Ejecuta `sql` con LIMIT 0 contra la BD real e infiere columnas y parámetros.
+
+    Se usa tanto al crear/actualizar un dataset (validación obligatoria antes de
+    guardar, §6.3) como en el endpoint explícito de re-validación.
+    """
     if connection.engine not in _POSTGRES_ENGINES:
         raise ValueError(f"Validación no soportada para el motor '{connection.engine.value}'.")
 
-    validate_sql(obj.sql_query)
-
-    # Ejecutar LIMIT 0 solo para obtener los metadatos de las columnas.
-    psycopg_sql = _named_to_psycopg(obj.sql_query)
+    psycopg_sql = _named_to_psycopg(normalize_sql(sql))
     limited = f"SELECT * FROM ({psycopg_sql}) AS _v LIMIT 0"
 
     with psycopg.connect(_make_conninfo(connection)) as conn:
@@ -111,7 +127,14 @@ def validate_dataset(session: Session, obj: Dataset, connection: Connection) -> 
                 else []
             )
 
-    params = _extract_named_params(obj.sql_query)
+    params = _extract_named_params(sql)
+    return cols, params
+
+
+def validate_dataset(session: Session, obj: Dataset, connection: Connection) -> Dataset:
+    """Valida el SQL contra la BD real e infiere columnas. Actualiza status → validated."""
+    validate_sql(obj.sql_query)
+    cols, params = _infer_schema(connection, obj.sql_query)
 
     obj.columns_schema = {"columns": cols}
     obj.parameters_schema = {"params": [{"name": p} for p in params]}
@@ -152,7 +175,7 @@ def run_query(
             return PreviewResult(**cached)
 
     validate_sql(sql)
-    psycopg_sql = _named_to_psycopg(sql)
+    psycopg_sql = _named_to_psycopg(normalize_sql(sql))
     psycopg_params = params or {}
 
     conninfo = _make_conninfo(connection)
