@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import type { DragEvent } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { listDatasets, previewDataset } from '@/features/datasets/api'
@@ -420,6 +420,14 @@ function ChartBuilder({
       setPreviewLoading(false)
     }
   }
+
+  // Al editar una gráfica guardada ya hay un dataset seleccionado: disparar el
+  // preview de una vez para que la gráfica se renderice sin que el usuario
+  // tenga que pulsar "Actualizar vista" a ciegas (REVISION_CODIGO.md #12).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (editingChart && state.datasetId) runPreview()
+  }, [])
 
   const saveMutation = useMutation({
     mutationFn: async () => {
