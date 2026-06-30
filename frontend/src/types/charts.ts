@@ -7,17 +7,44 @@ export type ChartType =
   | 'donut'
   | 'scatter'
 
+// x/y aceptan varias columnas (ejes multicolumna): y → series múltiples,
+// x → categoría compuesta cuando hay más de una columna. series sigue siendo
+// una sola columna de agrupación.
 export interface FieldMapping {
-  x: string
-  y: string
+  x: string[]
+  y: string[]
   series?: string | null
+}
+
+export const LEGEND_POSITIONS = [
+  'top',
+  'bottom',
+  'left',
+  'right',
+  'top-left',
+  'top-right',
+  'bottom-left',
+  'bottom-right',
+] as const
+
+export type LegendPosition = (typeof LEGEND_POSITIONS)[number]
+
+export const LEGEND_POSITION_LABELS: Record<LegendPosition, string> = {
+  top: 'Arriba',
+  bottom: 'Abajo',
+  left: 'Izquierda',
+  right: 'Derecha',
+  'top-left': 'Arriba izquierda',
+  'top-right': 'Arriba derecha',
+  'bottom-left': 'Abajo izquierda',
+  'bottom-right': 'Abajo derecha',
 }
 
 export interface VisualConfig {
   title?: string | null
   subtitle?: string | null
   show_legend?: boolean
-  legend_position?: 'top' | 'bottom' | 'left' | 'right'
+  legend_position?: LegendPosition
 }
 
 export interface Chart {

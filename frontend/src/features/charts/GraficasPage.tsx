@@ -1,12 +1,13 @@
 import { useState, useCallback } from 'react'
+import type { DragEvent } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { listDatasets, previewDataset } from '@/features/datasets/api'
 import { listCharts, createChart, updateChart, deleteChart } from './api'
 import { ChartRenderer } from './ChartRenderer'
 import { ChartTypePicker } from './ChartTypePicker'
-import type { Chart, ChartType, FieldMapping, VisualConfig } from '@/types/charts'
+import type { Chart, ChartType, FieldMapping, LegendPosition, VisualConfig } from '@/types/charts'
 import type { Dataset, ColumnMeta, PreviewResult } from '@/types/datasets'
-import { CHART_TYPE_LABELS } from '@/types/charts'
+import { CHART_TYPE_LABELS, LEGEND_POSITIONS, LEGEND_POSITION_LABELS } from '@/types/charts'
 
 // ── Constantes ────────────────────────────────────────────────────────────────
 
@@ -84,6 +85,132 @@ function Toggle({
           }`}
         />
       </button>
+    </div>
+  )
+}
+
+// ── Esquema arrastrable + zonas de mapeo (ejes multicolumna) ───────────────────
+
+type FieldZone = 'x' | 'y' | 'series'
+
+const COLUMN_DRAG_TYPE = 'application/x-tablerillos-column'
+
+function SchemaColumnChip({
+  column,
+  onQuickAdd,
+}: {
+  column: ColumnMeta
+  onQuickAdd: (zone: FieldZone) => void
+}) {
+  return (
+    <div
+      draggable
+      onDragStart={(e: DragEvent<HTMLDivElement>) => {
+        e.dataTransfer.setData(COLUMN_DRAG_TYPE, column.name)
+        e.dataTransfer.effectAllowed = 'copy'
+      }}
+      className="group flex cursor-grab items-center justify-between gap-1 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs active:cursor-grabbing hover:border-iieg-300"
+    >
+      <span className="truncate">
+        <span className="font-medium text-gray-700">{column.name}</span>
+        <span className="ml-1 text-[10px] text-gray-400">{column.data_type}</span>
+      </span>
+      <span className="hidden flex-shrink-0 gap-0.5 group-hover:flex">
+        <button
+          type="button"
+          title="Agregar a Eje X"
+          onClick={() => onQuickAdd('x')}
+          className="rounded px-1 text-[10px] font-semibold text-gray-400 hover:bg-iieg-50 hover:text-iieg-700"
+        >
+          X
+        </button>
+        <button
+          type="button"
+          title="Agregar a Eje Y"
+          onClick={() => onQuickAdd('y')}
+          className="rounded px-1 text-[10px] font-semibold text-gray-400 hover:bg-iieg-50 hover:text-iieg-700"
+        >
+          Y
+        </button>
+        <button
+          type="button"
+          title="Agregar a Serie"
+          onClick={() => onQuickAdd('series')}
+          className="rounded px-1 text-[10px] font-semibold text-gray-400 hover:bg-iieg-50 hover:text-iieg-700"
+        >
+          S
+        </button>
+      </span>
+    </div>
+  )
+}
+
+function FieldDropZone({
+  label,
+  hint,
+  values,
+  onChange,
+  maxItems,
+}: {
+  label: string
+  hint?: string
+  values: string[]
+  onChange: (values: string[]) => void
+  maxItems?: number
+}) {
+  const [isOver, setIsOver] = useState(false)
+
+  function addColumn(name: string) {
+    if (!name || values.includes(name)) return
+    if (maxItems && values.length >= maxItems) {
+      onChange([...values.slice(values.length - maxItems + 1), name])
+      return
+    }
+    onChange([...values, name])
+  }
+
+  return (
+    <div className="flex flex-col gap-1">
+      <label className="text-xs font-semibold text-gray-600">{label}</label>
+      <div
+        onDragOver={(e) => {
+          e.preventDefault()
+          setIsOver(true)
+        }}
+        onDragLeave={() => setIsOver(false)}
+        onDrop={(e) => {
+          e.preventDefault()
+          setIsOver(false)
+          addColumn(e.dataTransfer.getData(COLUMN_DRAG_TYPE))
+        }}
+        className={`min-h-[40px] rounded-lg border-2 border-dashed p-1.5 transition-colors ${
+          isOver ? 'border-iieg-400 bg-iieg-50' : 'border-gray-200 bg-gray-50'
+        }`}
+      >
+        {values.length === 0 ? (
+          <p className="px-0.5 py-1 text-[11px] text-gray-400">
+            {hint ?? 'Arrastra una columna aquí'}
+          </p>
+        ) : (
+          <div className="flex flex-wrap gap-1">
+            {values.map((v) => (
+              <span
+                key={v}
+                className="flex items-center gap-1 rounded-full bg-iieg-100 px-2 py-0.5 text-[11px] font-medium text-iieg-700"
+              >
+                {v}
+                <button
+                  type="button"
+                  onClick={() => onChange(values.filter((x) => x !== v))}
+                  className="text-iieg-500 hover:text-iieg-900"
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
@@ -177,13 +304,13 @@ interface BuilderState {
   description: string
   datasetId: string
   chartType: ChartType
-  fieldX: string
-  fieldY: string
-  fieldSeries: string
+  fieldX: string[]
+  fieldY: string[]
+  fieldSeries: string[]
   title: string
   subtitle: string
   showLegend: boolean
-  legendPosition: 'top' | 'bottom' | 'left' | 'right'
+  legendPosition: LegendPosition
 }
 
 const BUILDER_DEFAULTS: BuilderState = {
@@ -191,13 +318,20 @@ const BUILDER_DEFAULTS: BuilderState = {
   description: '',
   datasetId: '',
   chartType: 'bar',
-  fieldX: '',
-  fieldY: '',
-  fieldSeries: '',
+  fieldX: [],
+  fieldY: [],
+  fieldSeries: [],
   title: '',
   subtitle: '',
   showLegend: true,
   legendPosition: 'top',
+}
+
+// Acepta field_mapping legacy donde x/y eran string suelto en vez de array.
+function asColumnArray(v: unknown): string[] {
+  if (Array.isArray(v)) return v.filter((x): x is string => typeof x === 'string')
+  if (typeof v === 'string' && v) return [v]
+  return []
 }
 
 function builderFromChart(chart: Chart): BuilderState {
@@ -208,9 +342,9 @@ function builderFromChart(chart: Chart): BuilderState {
     description: chart.description ?? '',
     datasetId: chart.dataset_id,
     chartType: chart.chart_type,
-    fieldX: fm.x ?? '',
-    fieldY: fm.y ?? '',
-    fieldSeries: fm.series ?? '',
+    fieldX: asColumnArray(fm.x),
+    fieldY: asColumnArray(fm.y),
+    fieldSeries: fm.series ? [fm.series] : [],
     title: vc.title ?? '',
     subtitle: vc.subtitle ?? '',
     showLegend: vc.show_legend ?? true,
@@ -250,13 +384,28 @@ function ChartBuilder({
   )
 
   const selectedDataset = datasets.find((d) => d.id === state.datasetId) ?? null
-  const previewColumns: ColumnMeta[] = previewData?.columns ?? []
-  const columnOptions = previewColumns.map((c) => ({ value: c.name, label: c.name }))
+  // El esquema del dataset ya validado viene en columns_schema (sin necesidad
+  // de correr la vista previa); si aún no está validado, se usa lo último
+  // que haya devuelto el preview como respaldo.
+  const schemaColumns: ColumnMeta[] =
+    selectedDataset?.columns_schema?.columns ?? previewData?.columns ?? []
 
-  const canPreview =
-    state.datasetId && state.fieldX && state.fieldY
   const canSave =
-    state.name.trim() && state.datasetId && state.chartType && state.fieldX && state.fieldY
+    state.name.trim() &&
+    state.datasetId &&
+    state.chartType &&
+    state.fieldX.length > 0 &&
+    state.fieldY.length > 0
+
+  function addToZone(zone: FieldZone, column: string) {
+    if (zone === 'series') {
+      set('fieldSeries', [column])
+      return
+    }
+    const key = zone === 'x' ? 'fieldX' : 'fieldY'
+    if (state[key].includes(column)) return
+    set(key, [...state[key], column])
+  }
 
   async function runPreview() {
     if (!state.datasetId) return
@@ -277,7 +426,7 @@ function ChartBuilder({
       const fieldMapping: FieldMapping = {
         x: state.fieldX,
         y: state.fieldY,
-        series: state.fieldSeries || null,
+        series: state.fieldSeries[0] || null,
       }
       const visualConfig: VisualConfig = {
         title: state.title || null,
@@ -313,7 +462,7 @@ function ChartBuilder({
   const fieldMapping: FieldMapping = {
     x: state.fieldX,
     y: state.fieldY,
-    series: state.fieldSeries || undefined,
+    series: state.fieldSeries[0] || undefined,
   }
   const visualConfig: VisualConfig = {
     title: state.title || undefined,
@@ -325,10 +474,10 @@ function ChartBuilder({
   const showChart =
     previewData &&
     previewData.rows.length > 0 &&
-    state.fieldX &&
-    state.fieldY &&
-    previewData.columns.some((c) => c.name === state.fieldX) &&
-    previewData.columns.some((c) => c.name === state.fieldY)
+    state.fieldX.length > 0 &&
+    state.fieldY.length > 0 &&
+    state.fieldX.every((c) => previewData.columns.some((col) => col.name === c)) &&
+    state.fieldY.every((c) => previewData.columns.some((col) => col.name === c))
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
@@ -364,9 +513,9 @@ function ChartBuilder({
             onChange={(v) => {
               set('datasetId', v)
               setPreviewData(null)
-              set('fieldX', '')
-              set('fieldY', '')
-              set('fieldSeries', '')
+              set('fieldX', [])
+              set('fieldY', [])
+              set('fieldSeries', [])
             }}
             options={datasets.map((d) => ({ value: d.id, label: d.name }))}
           />
@@ -382,49 +531,73 @@ function ChartBuilder({
 
       {/* Main: 3 columnas */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Izquierda: mapeo de campos */}
-        <div className="w-52 flex-shrink-0 space-y-4 overflow-y-auto border-r border-gray-100 bg-white p-4">
-          <p className="text-xs font-bold uppercase tracking-wider text-gray-400">
-            Mapeo de campos
-          </p>
-
-          <Select
-            label="Eje X (categoría)"
-            value={state.fieldX}
-            onChange={(v) => set('fieldX', v)}
-            options={columnOptions}
-            placeholder="Selecciona campo…"
-          />
-          <Select
-            label="Eje Y (valor)"
-            value={state.fieldY}
-            onChange={(v) => set('fieldY', v)}
-            options={columnOptions}
-            placeholder="Selecciona campo…"
-          />
-          <Select
-            label="Serie (opcional)"
-            value={state.fieldSeries}
-            onChange={(v) => set('fieldSeries', v)}
-            options={columnOptions}
-            placeholder="Sin agrupación"
-          />
-
-          {!state.datasetId && (
-            <p className="text-xs text-gray-400">Selecciona un dataset para ver las columnas.</p>
-          )}
-          {state.datasetId && !previewData && (
-            <p className="text-xs text-gray-400">
-              Carga el dataset con "Actualizar vista" para ver las columnas disponibles.
+        {/* Izquierda: esquema del dataset + mapeo de campos (drag & drop) */}
+        <div className="w-64 flex-shrink-0 space-y-4 overflow-y-auto border-r border-gray-100 bg-white p-4">
+          <div>
+            <p className="mb-2 text-xs font-bold uppercase tracking-wider text-gray-400">
+              Esquema del dataset
             </p>
-          )}
 
-          {selectedDataset && (
-            <div className="rounded-lg bg-gray-50 p-2.5 text-xs text-gray-500">
-              <p className="font-semibold text-gray-700">{selectedDataset.name}</p>
-              <p className="mt-0.5">{selectedDataset.max_rows} filas máx.</p>
-            </div>
-          )}
+            {!state.datasetId && (
+              <p className="text-xs text-gray-400">Selecciona un dataset para ver su esquema.</p>
+            )}
+
+            {state.datasetId && schemaColumns.length === 0 && (
+              <p className="text-xs text-gray-400">
+                Este dataset no tiene un esquema validado. Valídalo en el módulo de
+                Datasets, o usa "Actualizar vista" para detectar columnas desde el preview.
+              </p>
+            )}
+
+            {schemaColumns.length > 0 && (
+              <div className="space-y-1">
+                {schemaColumns.map((c) => (
+                  <SchemaColumnChip key={c.name} column={c} onQuickAdd={(zone) => addToZone(zone, c.name)} />
+                ))}
+              </div>
+            )}
+
+            {selectedDataset && (
+              <div className="mt-3 rounded-lg bg-gray-50 p-2.5 text-xs text-gray-500">
+                <p className="font-semibold text-gray-700">{selectedDataset.name}</p>
+                <p className="mt-0.5">{selectedDataset.max_rows} filas máx.</p>
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-3 border-t border-gray-100 pt-4">
+            <p className="text-xs font-bold uppercase tracking-wider text-gray-400">
+              Mapeo de campos
+            </p>
+            <p className="text-[11px] text-gray-400">
+              Arrastra columnas del esquema (o usa los botones X/Y/S al pasar el cursor).
+            </p>
+
+            <FieldDropZone
+              label="Eje X (categoría)"
+              hint="Arrastra una o varias columnas"
+              values={state.fieldX}
+              onChange={(v) => set('fieldX', v)}
+            />
+            <FieldDropZone
+              label="Eje Y (valor)"
+              hint="Arrastra una o varias columnas"
+              values={state.fieldY}
+              onChange={(v) => set('fieldY', v)}
+            />
+            <FieldDropZone
+              label="Serie (opcional)"
+              hint="Sin agrupación"
+              values={state.fieldSeries}
+              onChange={(v) => set('fieldSeries', v)}
+              maxItems={1}
+            />
+            {state.fieldY.length > 1 && (
+              <p className="text-[11px] text-gray-400">
+                Varias columnas en Eje Y se grafican como series separadas.
+              </p>
+            )}
+          </div>
         </div>
 
         {/* Centro: vista previa */}
@@ -490,8 +663,8 @@ function ChartBuilder({
                   <p className="text-sm text-gray-400">
                     {!state.datasetId
                       ? 'Selecciona un dataset para comenzar'
-                      : !state.fieldX || !state.fieldY
-                      ? 'Elige los campos X e Y y haz clic en "Actualizar vista"'
+                      : state.fieldX.length === 0 || state.fieldY.length === 0
+                      ? 'Arrastra los campos a Eje X e Y y haz clic en "Actualizar vista"'
                       : 'Haz clic en "Actualizar vista" para cargar los datos'}
                   </p>
                 </div>
@@ -549,13 +722,8 @@ function ChartBuilder({
             <Select
               label="Posición de la leyenda"
               value={state.legendPosition}
-              onChange={(v) => set('legendPosition', v as BuilderState['legendPosition'])}
-              options={[
-                { value: 'top', label: 'Arriba' },
-                { value: 'bottom', label: 'Abajo' },
-                { value: 'left', label: 'Izquierda' },
-                { value: 'right', label: 'Derecha' },
-              ]}
+              onChange={(v) => set('legendPosition', v as LegendPosition)}
+              options={LEGEND_POSITIONS.map((p) => ({ value: p, label: LEGEND_POSITION_LABELS[p] }))}
             />
           )}
         </div>

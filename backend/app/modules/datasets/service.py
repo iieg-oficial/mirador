@@ -33,6 +33,10 @@ _POSTGRES_ENGINES = {ConnectionEngine.postgresql, ConnectionEngine.postgis}
 _CONNECT_TIMEOUT_SECONDS = 10
 _DEFAULT_STATEMENT_TIMEOUT_MS = 15_000
 
+# (?<!:) evita que el segundo ':' de un cast Postgres (p. ej. `::date`) se
+# confunda con un parámetro nombrado.
+_NAMED_PARAM_RE = re.compile(r"(?<!:):([a-zA-Z_][a-zA-Z0-9_]*)")
+
 
 # ── CRUD ─────────────────────────────────────────────────────────────────────
 
@@ -218,11 +222,11 @@ def _make_conninfo(connection: Connection) -> str:
 
 def _named_to_psycopg(sql: str) -> str:
     """Convierte parámetros :name → %(name)s (estilo psycopg named)."""
-    return re.sub(r":([a-zA-Z_][a-zA-Z0-9_]*)", r"%(\1)s", sql)
+    return _NAMED_PARAM_RE.sub(r"%(\1)s", sql)
 
 
 def _extract_named_params(sql: str) -> list[str]:
-    return list(dict.fromkeys(re.findall(r":([a-zA-Z_][a-zA-Z0-9_]*)", sql)))
+    return list(dict.fromkeys(_NAMED_PARAM_RE.findall(sql)))
 
 
 def _pg_type(desc: Any) -> str:

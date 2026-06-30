@@ -1,7 +1,41 @@
 import { useEffect, useRef } from 'react'
 import * as echarts from 'echarts'
 import type { ECharts, EChartsOption } from 'echarts'
-import type { ChartType, FieldMapping, VisualConfig } from '@/types/charts'
+import type { ChartType, FieldMapping, LegendPosition, VisualConfig } from '@/types/charts'
+
+// ── Posición de leyenda → opción ECharts ───────────────────────────────────────
+
+function legendPositionOption(pos: LegendPosition): EChartsOption['legend'] {
+  switch (pos) {
+    case 'top':
+      return { top: 4, left: 'center', orient: 'horizontal' }
+    case 'bottom':
+      return { bottom: 4, left: 'center', orient: 'horizontal' }
+    case 'left':
+      return { left: 4, top: 'middle', orient: 'vertical' }
+    case 'right':
+      return { right: 4, top: 'middle', orient: 'vertical' }
+    case 'top-left':
+      return { top: 4, left: 4, orient: 'vertical' }
+    case 'top-right':
+      return { top: 4, right: 4, orient: 'vertical' }
+    case 'bottom-left':
+      return { bottom: 4, left: 4, orient: 'vertical' }
+    case 'bottom-right':
+      return { bottom: 4, right: 4, orient: 'vertical' }
+  }
+}
+
+// ── Composición de categoría cuando el eje tiene varias columnas ──────────────
+
+function compositeValue(cols: string[], row: Record<string, unknown>): string {
+  if (cols.length <= 1) return String(row[cols[0]] ?? '')
+  return cols.map((c) => String(row[c] ?? '')).join(' / ')
+}
+
+function numericValue(v: unknown): number {
+  return typeof v === 'number' ? v : Number(v)
+}
 
 // ── Transformador spec → ECharts option ───────────────────────────────────────
 
@@ -12,6 +46,8 @@ function buildOption(
   rows: Record<string, unknown>[],
 ): EChartsOption {
   const { x, y, series } = fieldMapping
+  const x0 = x[0] ?? ''
+  const y0 = y[0] ?? ''
   const {
     title,
     subtitle,
@@ -28,7 +64,7 @@ function buildOption(
   }
 
   const legendOpt: EChartsOption['legend'] = show_legend
-    ? { show: true, [legend_position]: legend_position === 'top' || legend_position === 'bottom' ? 0 : 0 }
+    ? { show: true, ...legendPositionOption(legend_position) }
     : { show: false }
 
   // ── Pastel / Dona ──────────────────────────────────────────────────────────
@@ -43,7 +79,7 @@ function buildOption(
           radius: chartType === 'donut' ? ['40%', '70%'] : '65%',
           itemStyle: { borderRadius: 4, borderColor: '#fff', borderWidth: 2 },
           label: { formatter: '{b}\n{d}%' },
-          data: rows.map((r) => ({ name: String(r[x] ?? ''), value: r[y] })),
+          data: rows.map((r) => ({ name: compositeValue(x, r), value: numericValue(r[y0]) })),
         },
       ],
     }
@@ -55,12 +91,12 @@ function buildOption(
       title: baseTitle,
       legend: legendOpt,
       tooltip: { trigger: 'item' },
-      xAxis: { type: 'value', name: x },
-      yAxis: { type: 'value', name: y },
+      xAxis: { type: 'value', name: x0 },
+      yAxis: { type: 'value', name: y0 },
       series: [
         {
           type: 'scatter',
-          data: rows.map((r) => [r[x], r[y]]),
+          data: rows.map((r) => [numericValue(r[x0]), numericValue(r[y0])]),
           symbolSize: 8,
         },
       ],
@@ -77,8 +113,9 @@ function buildOption(
   let categoryData: string[]
 
   if (series) {
+    // Agrupar por columna de serie: solo se usa la primera columna de Y.
     const uniqueSeries = [...new Set(rows.map((r) => String(r[series] ?? '')))]
-    categoryData = [...new Set(rows.map((r) => String(r[x] ?? '')))]
+    categoryData = [...new Set(rows.map((r) => compositeValue(x, r)))]
 
     seriesData = uniqueSeries.map((sv) => ({
       name: sv,
@@ -86,14 +123,23 @@ function buildOption(
       areaStyle,
       data: categoryData.map((xv) => {
         const row = rows.find(
-          (r) => String(r[x] ?? '') === xv && String(r[series] ?? '') === sv,
+          (r) => compositeValue(x, r) === xv && String(r[series] ?? '') === sv,
         )
-        return row ? row[y] : null
+        return row ? row[y0] : null
       }),
     }))
+  } else if (y.length > 1) {
+    // Sin columna de serie pero con varias columnas en Y: cada una es su propia serie.
+    categoryData = rows.map((r) => compositeValue(x, r))
+    seriesData = y.map((yCol) => ({
+      name: yCol,
+      type: eType,
+      areaStyle,
+      data: rows.map((r) => r[yCol]),
+    }))
   } else {
-    categoryData = rows.map((r) => String(r[x] ?? ''))
-    seriesData = [{ name: y, type: eType, areaStyle, data: rows.map((r) => r[y]) }]
+    categoryData = rows.map((r) => compositeValue(x, r))
+    seriesData = [{ name: y0, type: eType, areaStyle, data: rows.map((r) => r[y0]) }]
   }
 
   const catAxis = {
