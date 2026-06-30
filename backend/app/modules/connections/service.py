@@ -10,7 +10,8 @@ import uuid
 import psycopg
 from sqlmodel import Session, select
 
-from app.core.security import decrypt_secret, encrypt_secret
+from app.core.db_external import make_conninfo
+from app.core.security import encrypt_secret
 from app.modules.auth.models import CurrentUser
 from app.modules.connections.models import (
     Connection,
@@ -100,16 +101,7 @@ def test_connection(session: Session, connection: Connection) -> ConnectionTestR
         return ConnectionTestResult(success=False, status=connection.status, detail=detail)
 
     try:
-        password = decrypt_secret(connection.encrypted_password)
-        conninfo = psycopg.conninfo.make_conninfo(
-            host=connection.host,
-            port=connection.port,
-            dbname=connection.database,
-            user=connection.username,
-            password=password,
-            connect_timeout=_CONNECT_TIMEOUT_SECONDS,
-            sslmode="require" if connection.ssl_enabled else "prefer",
-        )
+        conninfo = make_conninfo(connection, _CONNECT_TIMEOUT_SECONDS)
         with psycopg.connect(conninfo, autocommit=False) as conn:
             # Defensa: transacción de solo lectura + timeout de statement.
             conn.read_only = True
@@ -144,19 +136,6 @@ def _persist_test(
 # ── Exploración de esquema ────────────────────────────────────────────────────
 
 
-def _make_conninfo(connection: Connection) -> str:
-    password = decrypt_secret(connection.encrypted_password)
-    return psycopg.conninfo.make_conninfo(
-        host=connection.host,
-        port=connection.port,
-        dbname=connection.database,
-        user=connection.username,
-        password=password,
-        connect_timeout=_CONNECT_TIMEOUT_SECONDS,
-        sslmode="require" if connection.ssl_enabled else "prefer",
-    )
-
-
 def get_schema(connection: Connection) -> SchemaResponse:
     """Lista esquemas, tablas, vistas y vistas materializadas de la BD externa."""
     if connection.engine not in _POSTGRES_ENGINES:
@@ -166,7 +145,7 @@ def get_schema(connection: Connection) -> SchemaResponse:
 
     schema_map: dict[str, list[SchemaObject]] = {}
 
-    with psycopg.connect(_make_conninfo(connection)) as conn:
+    with psycopg.connect(make_conninfo(connection, _CONNECT_TIMEOUT_SECONDS)) as conn:
         conn.read_only = True
         with conn.cursor() as cur:
             # Hardcodeamos los esquemas del sistema; no son entrada de usuario.
@@ -207,7 +186,7 @@ def get_columns(connection: Connection, schema_name: str, object_name: str) -> l
             f"Inspección de columnas no disponible para el motor '{connection.engine.value}'."
         )
 
-    with psycopg.connect(_make_conninfo(connection)) as conn:
+    with psycopg.connect(make_conninfo(connection, _CONNECT_TIMEOUT_SECONDS)) as conn:
         conn.read_only = True
         with conn.cursor() as cur:
             # pg_attribute cubre tablas, vistas Y vistas materializadas.

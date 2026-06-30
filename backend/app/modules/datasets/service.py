@@ -16,7 +16,7 @@ import psycopg
 from sqlmodel import Session, select
 
 from app.core.cache import get_cached, invalidate, set_cached
-from app.core.security import decrypt_secret
+from app.core.db_external import make_conninfo
 from app.core.sql_guard import normalize_sql, validate_sql
 from app.modules.auth.models import CurrentUser
 from app.modules.connections.models import Connection, ConnectionEngine
@@ -242,16 +242,7 @@ def run_query(
 
 
 def _make_conninfo(connection: Connection) -> str:
-    password = decrypt_secret(connection.encrypted_password)
-    return psycopg.conninfo.make_conninfo(
-        host=connection.host,
-        port=connection.port,
-        dbname=connection.database,
-        user=connection.username,
-        password=password,
-        connect_timeout=_CONNECT_TIMEOUT_SECONDS,
-        sslmode="require" if connection.ssl_enabled else "prefer",
-    )
+    return make_conninfo(connection, _CONNECT_TIMEOUT_SECONDS)
 
 
 def _named_to_psycopg(sql: str) -> str:

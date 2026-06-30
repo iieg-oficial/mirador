@@ -1,7 +1,8 @@
 """Punto de entrada de la API de Tablerillos.
 
-Monta los routers de los módulos bajo `/api/...`. La autenticación se resuelve a
-través de la abstracción `app.modules.auth` (stub en dev, Minerva en prod).
+Monta los routers de los módulos bajo `/api/...`. La autenticación se resuelve
+siempre contra Minerva a través de `app.modules.auth` (no hay modo "sin auth"
+ni proveedor alternativo; ver CLAUDE.md).
 """
 
 from fastapi import FastAPI
