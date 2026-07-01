@@ -53,10 +53,16 @@ def validate_sql(sql: str) -> None:
     if stmt is None:
         raise ValueError("La consulta está vacía.")
 
-    # Acepta SELECT puro o WITH ... SELECT (CTEs)
+    # Acepta SELECT puro o WITH ... SELECT (CTEs). `SELECT ... INTO` escribe una
+    # tabla y sqlglot lo parsea como Select: se rechaza por el AST (la lista negra
+    # no cubre INTO), no dependemos solo de la transacción READ ONLY.
     if isinstance(stmt, exp.Select):
+        if stmt.args.get("into"):
+            raise ValueError("No se permite SELECT ... INTO.")
         return
     if isinstance(stmt, exp.With) and isinstance(stmt.this, exp.Select):
+        if stmt.this.args.get("into"):
+            raise ValueError("No se permite SELECT ... INTO.")
         return
 
     raise ValueError(

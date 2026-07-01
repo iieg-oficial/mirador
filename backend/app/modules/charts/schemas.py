@@ -22,7 +22,8 @@ class ChartUpdate(BaseModel):
     chart_type: str | None = Field(default=None, max_length=40)
     field_mapping: dict[str, Any] | None = None
     visual_config: dict[str, Any] | None = None
-    status: str | None = None
+    # `status` no se expone aquí: no hay flujo de publicación de gráficas todavía.
+    # La máquina de estados llegará con la fase de dashboards.
 
 
 class ChartRead(BaseModel):

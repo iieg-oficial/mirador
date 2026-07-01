@@ -11,6 +11,7 @@ auth, nunca el SDK directo). Mapeo de permisos (ver `manifest.minerva.yml`):
     POST   .../{id}/test     -> tablerillos.connections.manage
 """
 
+import logging
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -31,6 +32,7 @@ from app.modules.connections.schemas import (
 )
 
 router = APIRouter()
+log = logging.getLogger(__name__)
 
 
 def _get_or_404(session: Session, connection_id: uuid.UUID) -> Connection:
@@ -109,10 +111,11 @@ def get_schema(
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
     except Exception as exc:
+        log.exception("Error al inspeccionar el esquema de la BD externa")
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"No se pudo inspeccionar el esquema: {exc}",
-        )
+            detail="No se pudo inspeccionar el esquema.",
+        ) from exc
 
 
 @router.get(
@@ -132,7 +135,8 @@ def get_columns(
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
     except Exception as exc:
+        log.exception("Error al obtener columnas de la BD externa")
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"No se pudieron obtener las columnas: {exc}",
-        )
+            detail="No se pudieron obtener las columnas.",
+        ) from exc

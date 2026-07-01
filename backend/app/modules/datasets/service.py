@@ -246,8 +246,13 @@ def _make_conninfo(connection: Connection) -> str:
 
 
 def _named_to_psycopg(sql: str) -> str:
-    """Convierte parámetros :name → %(name)s (estilo psycopg named)."""
-    return _NAMED_PARAM_RE.sub(r"%(\1)s", sql)
+    """Convierte parámetros :name → %(name)s (estilo psycopg named).
+
+    Dobla primero los `%` literales (p. ej. `LIKE '%2024%'`): psycopg usa binding
+    pyformat cuando se pasan params, así que un `%` sin escapar aborta la ejecución.
+    El doblado va antes de introducir los `%(name)s` reales para no tocarlos.
+    """
+    return _NAMED_PARAM_RE.sub(r"%(\1)s", sql.replace("%", "%%"))
 
 
 def _extract_named_params(sql: str) -> list[str]:

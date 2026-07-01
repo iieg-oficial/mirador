@@ -1,5 +1,6 @@
 """Endpoints del módulo charts (§8.4)."""
 
+import logging
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -16,6 +17,7 @@ from app.modules.datasets import service as dataset_service
 from app.modules.datasets.schemas import PreviewResult
 
 router = APIRouter()
+log = logging.getLogger(__name__)
 
 
 def _get_or_404(session: Session, chart_id: uuid.UUID) -> Chart:
@@ -42,9 +44,13 @@ def create_chart(
     session: Session = Depends(get_session),
     user: CurrentUser = Depends(require_permission("tablerillos.charts.create")),
 ) -> Chart:
-    if dataset_service.get_dataset(session, data.dataset_id) is None:
+    dataset = dataset_service.get_dataset(session, data.dataset_id)
+    if dataset is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dataset no encontrado")
-    return service.create_chart(session, data, user)
+    try:
+        return service.create_chart(session, data, user, dataset)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
 
 
 @router.get("/{chart_id}", response_model=ChartRead)
@@ -64,7 +70,13 @@ def update_chart(
     _: CurrentUser = Depends(require_permission("tablerillos.charts.update")),
 ) -> Chart:
     obj = _get_or_404(session, chart_id)
-    return service.update_chart(session, obj, data)
+    dataset = dataset_service.get_dataset(session, obj.dataset_id)
+    if dataset is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dataset no encontrado")
+    try:
+        return service.update_chart(session, obj, data, dataset)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
 
 
 @router.delete("/{chart_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -101,7 +113,8 @@ def preview_chart(
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
     except Exception as exc:
+        log.exception("Error al ejecutar el dataset de la gráfica")
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Error al ejecutar el dataset: {exc}",
-        )
+            detail="Error al ejecutar el dataset.",
+        ) from exc

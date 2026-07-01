@@ -6,6 +6,7 @@ canjea el código y establece la cookie de sesión `tb_session`; `/logout` revoc
 limpia. No hay modo alternativo ni "sin auth".
 """
 
+import logging
 import secrets
 import urllib.parse
 
@@ -18,6 +19,7 @@ from app.modules.auth.models import CurrentUser
 from app.modules.auth.session import SessionStore
 
 router = APIRouter()
+log = logging.getLogger(__name__)
 
 
 @router.get("/me", response_model=CurrentUser)
@@ -89,9 +91,10 @@ async def callback(request: Request) -> RedirectResponse:
     try:
         tokens = await exchange_code_for_tokens(settings, code, oidc_data["code_verifier"])
     except Exception as exc:
+        log.exception("Error al canjear el código con Minerva")
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Error al canjear el código con Minerva: {exc}",
+            detail="Error al canjear el código con Minerva.",
         ) from exc
 
     # La sesión BFF guarda solo los tokens; la identidad (sub/email/name/roles) se

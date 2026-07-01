@@ -1,5 +1,6 @@
 """Endpoints del módulo datasets (§8.3)."""
 
+import logging
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -22,6 +23,7 @@ from app.modules.datasets.schemas import (
 )
 
 router = APIRouter()
+log = logging.getLogger(__name__)
 
 
 def _get_or_404(session: Session, dataset_id: uuid.UUID) -> Dataset:
@@ -69,10 +71,11 @@ def create_dataset(
             detail="Ya existe un dataset con ese slug.",
         ) from exc
     except Exception as exc:
+        log.exception("Error al validar el dataset contra la BD externa")
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Error al validar contra la BD: {exc}",
-        )
+            detail="Error al validar la consulta contra la base de datos.",
+        ) from exc
 
 
 @router.get("/{dataset_id}", response_model=DatasetRead)
@@ -98,10 +101,11 @@ def update_dataset(
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
     except Exception as exc:
+        log.exception("Error al validar el dataset contra la BD externa")
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Error al validar contra la BD: {exc}",
-        )
+            detail="Error al validar la consulta contra la base de datos.",
+        ) from exc
 
 
 @router.delete("/{dataset_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -130,10 +134,11 @@ def validate_dataset(
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
     except Exception as exc:
+        log.exception("Error al validar el dataset contra la BD externa")
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Error al validar contra la BD: {exc}",
-        )
+            detail="Error al validar la consulta contra la base de datos.",
+        ) from exc
 
 
 @router.post("/{dataset_id}/preview", response_model=PreviewResult)
@@ -157,10 +162,11 @@ def preview_dataset(
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
     except Exception as exc:
+        log.exception("Error al ejecutar el dataset contra la BD externa")
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Error al ejecutar el dataset: {exc}",
-        )
+            detail="Error al ejecutar el dataset.",
+        ) from exc
 
 
 # ── Playground (ejecución ad-hoc sin guardar) ─────────────────────────────────
@@ -179,7 +185,8 @@ def playground(
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
     except Exception as exc:
+        log.exception("Error al ejecutar la consulta del playground")
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Error al ejecutar la consulta: {exc}",
-        )
+            detail="Error al ejecutar la consulta.",
+        ) from exc
