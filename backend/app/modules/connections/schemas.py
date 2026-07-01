@@ -8,10 +8,14 @@ Separación clave (§9.1): la contraseña entra en texto plano (`ConnectionCreat
 import enum
 import uuid
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
 from app.modules.connections.models import ConnectionEngine, ConnectionStatus
+
+# Valores válidos de `sslmode` de libpq/psycopg.
+SSLMode = Literal["disable", "allow", "prefer", "require", "verify-ca", "verify-full"]
 
 
 class ConnectionCreate(BaseModel):
@@ -26,6 +30,7 @@ class ConnectionCreate(BaseModel):
     username: str = Field(min_length=1, max_length=255)
     password: str = Field(min_length=1)
     ssl_enabled: bool = False
+    ssl_mode: SSLMode | None = None
     read_only: bool = True
 
 
@@ -41,6 +46,7 @@ class ConnectionUpdate(BaseModel):
     username: str | None = Field(default=None, min_length=1, max_length=255)
     password: str | None = Field(default=None, min_length=1)
     ssl_enabled: bool | None = None
+    ssl_mode: SSLMode | None = None
     read_only: bool | None = None
     status: ConnectionStatus | None = None
 
@@ -57,6 +63,7 @@ class ConnectionRead(BaseModel):
     database: str
     username: str
     ssl_enabled: bool
+    ssl_mode: str | None
     read_only: bool
     status: ConnectionStatus
     last_test_error: str | None

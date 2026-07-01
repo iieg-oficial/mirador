@@ -47,6 +47,27 @@ async def exchange_code_for_tokens(
         return resp.json()  # type: ignore[no-any-return]
 
 
+async def refresh_tokens(settings: Settings, refresh_token: str) -> dict[str, Any]:
+    """Rota el par de tokens con el refresh_token (server-to-server con Minerva).
+
+    Minerva rota el refresh_token en cada uso (single-use); el llamador debe
+    reemplazar el valor almacenado por el nuevo (ver `minerva.resolve_user`).
+    """
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            f"{settings.MINERVA_ISSUER_URL}/auth/token",
+            data={
+                "grant_type": "refresh_token",
+                "client_id": settings.MINERVA_CLIENT_ID or "",
+                "client_secret": settings.MINERVA_CLIENT_SECRET or "",
+                "refresh_token": refresh_token,
+            },
+            timeout=10.0,
+        )
+        resp.raise_for_status()
+        return resp.json()  # type: ignore[no-any-return]
+
+
 async def revoke_token(settings: Settings, token: str) -> None:
     """Revoca un token (refresh_token) en Minerva. Best-effort."""
     try:

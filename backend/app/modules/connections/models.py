@@ -49,6 +49,9 @@ class Connection(UUIDAuditBase, table=True):
     # Contraseña cifrada con Fernet. Nunca en texto plano, nunca al frontend.
     encrypted_password: str = Field()
     ssl_enabled: bool = Field(default=False)
+    # sslmode explícito de psycopg (disable…verify-full). Si es None se deriva de
+    # `ssl_enabled` (require/prefer). Permite exigir TLS estricto por conexión.
+    ssl_mode: str | None = Field(default=None, max_length=20)
     read_only: bool = Field(default=True)
     status: ConnectionStatus = Field(default=ConnectionStatus.inactiva)
     # Resultado/diagnóstico de la última prueba de conexión (legible).

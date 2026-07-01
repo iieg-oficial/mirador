@@ -31,8 +31,15 @@ from app.modules.auth.session import SessionStore
 _sessions = SessionStore()
 
 
-def _access_token(request: Request) -> str:
-    """Recupera el access_token de la sesión BFF o lanza 401."""
+def _unauthorized() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Sesión expirada o inválida. Inicia sesión de nuevo.",
+    )
+
+
+def _load_session(request: Request) -> tuple[str, dict]:
+    """Devuelve (sid, sesión BFF) o lanza 401 si no hay cookie/sesión válida."""
     settings = get_settings()
     sid = request.cookies.get(settings.SESSION_COOKIE_NAME)
     if not sid:
@@ -42,21 +49,65 @@ def _access_token(request: Request) -> str:
         )
     session = _sessions.get(f"session:{sid}")
     if not session or not session.get("access_token"):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Sesión expirada o inválida.",
-        )
+        raise _unauthorized()
+    return sid, session
+
+
+def _access_token(request: Request) -> str:
+    """Recupera el access_token de la sesión BFF (ya refrescado si hizo falta)."""
+    _, session = _load_session(request)
     return str(session["access_token"])
 
 
-async def resolve_user(request: Request) -> CurrentUser:
-    """Resuelve la identidad del request validando el token con el SDK."""
+async def _claims_from_token(token: str) -> dict:
     from minerva_sdk.fastapi import get_current_user as sdk_get_current_user
 
-    token = _access_token(request)
-    claims = await sdk_get_current_user(
+    return await sdk_get_current_user(
         HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
     )
+
+
+async def _refresh_and_retry(sid: str, session: dict) -> dict:
+    """Rota los tokens con el refresh_token, persiste el par nuevo y revalida.
+
+    Mantiene viva la sesión BFF (TTL de horas) cuando el access_token de Minerva,
+    de vida corta, expira. El refresh_token es single-use: se reemplaza el
+    almacenado por el que devuelve Minerva (contrato "Refresh And Logout").
+    """
+    from app.modules.auth.oidc import refresh_tokens
+
+    refresh_token = session.get("refresh_token")
+    if not refresh_token:
+        raise _unauthorized()
+
+    settings = get_settings()
+    try:
+        tokens = await refresh_tokens(settings, str(refresh_token))
+    except Exception as exc:  # noqa: BLE001 — cualquier fallo de refresh ⇒ re-login
+        raise _unauthorized() from exc
+
+    session["access_token"] = tokens.get("access_token", "")
+    session["refresh_token"] = tokens.get("refresh_token", refresh_token)
+    _sessions.set(f"session:{sid}", session, ttl=settings.SESSION_TTL_SECONDS)
+
+    try:
+        return await _claims_from_token(str(session["access_token"]))
+    except HTTPException as exc:
+        raise _unauthorized() from exc
+
+
+async def resolve_user(request: Request) -> CurrentUser:
+    """Resuelve la identidad del request validando el token con el SDK.
+
+    Si el access_token expiró, intenta refrescarlo una vez con el refresh_token
+    antes de rendirse con 401.
+    """
+    sid, session = _load_session(request)
+    try:
+        claims = await _claims_from_token(str(session["access_token"]))
+    except HTTPException:
+        claims = await _refresh_and_retry(sid, session)
+
     # `roles` del token = slugs de los roles del usuario en esta aplicación
     # (Minerva los calcula sobre app.slug=tablerillos al emitir el token).
     # Vacío ⇒ no pertenece a Tablerillos (gate en require_app_access).

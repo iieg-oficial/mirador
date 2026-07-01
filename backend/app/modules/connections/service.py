@@ -56,6 +56,7 @@ def create_connection(session: Session, data: ConnectionCreate, user: CurrentUse
         username=data.username,
         encrypted_password=encrypt_secret(data.password),
         ssl_enabled=data.ssl_enabled,
+        ssl_mode=data.ssl_mode,
         read_only=data.read_only,
         status=ConnectionStatus.inactiva,
         created_by=user.sub,

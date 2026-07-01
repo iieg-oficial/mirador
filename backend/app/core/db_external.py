@@ -13,6 +13,8 @@ from app.modules.connections.models import Connection
 
 def make_conninfo(connection: Connection, connect_timeout: int) -> str:
     password = decrypt_secret(connection.encrypted_password)
+    # `ssl_mode` explícito gana (permite verify-full); si no, se deriva del flag.
+    sslmode = connection.ssl_mode or ("require" if connection.ssl_enabled else "prefer")
     return psycopg.conninfo.make_conninfo(
         host=connection.host,
         port=connection.port,
@@ -20,5 +22,5 @@ def make_conninfo(connection: Connection, connect_timeout: int) -> str:
         user=connection.username,
         password=password,
         connect_timeout=connect_timeout,
-        sslmode="require" if connection.ssl_enabled else "prefer",
+        sslmode=sslmode,
     )
