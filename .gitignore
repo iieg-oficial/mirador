@@ -28,14 +28,6 @@ pnpm-debug.log*
 !*/.env.example
 infra/**/*.secret
 
-# ----- Claude Code -----
-.claude/*
-!.claude/agents/
-!.claude/skills/
-.claude/skills/*
-!.claude/skills/doc-modulo/
-!.claude/skills/nuevo-modulo/
-
 # ----- Editores / SO -----
 .idea/
 .vscode/
@@ -48,3 +40,4 @@ exports/
 .tmp/
 *.gpkg
 /ui/
+/graphify-out/
