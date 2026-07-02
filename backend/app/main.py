@@ -10,9 +10,12 @@ import logging
 from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy import text
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from app.core import database
 from app.core.config import get_settings
+from app.modules.auth import session as auth_session
 from app.modules.auth.deps import require_app_access
 from app.modules.auth.router import router as auth_router
 from app.modules.charts.router import router as charts_router
@@ -75,6 +78,27 @@ app.include_router(
 
 
 @app.get("/health", tags=["meta"])
-def health() -> dict[str, str]:
-    """Health check para orquestación y monitoreo."""
-    return {"status": "ok"}
+def health() -> JSONResponse:
+    """Health check para orquestación y monitoreo: verifica metadata DB y Redis."""
+    components: dict[str, str] = {}
+
+    try:
+        with database.engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        components["database"] = "ok"
+    except Exception:  # noqa: BLE001
+        log.exception("Health check: base de metadata no disponible")
+        components["database"] = "error"
+
+    try:
+        auth_session.get_redis().ping()
+        components["redis"] = "ok"
+    except Exception:  # noqa: BLE001
+        log.exception("Health check: Redis no disponible")
+        components["redis"] = "error"
+
+    healthy = all(v == "ok" for v in components.values())
+    return JSONResponse(
+        status_code=200 if healthy else 503,
+        content={"status": "ok" if healthy else "error", "components": components},
+    )
