@@ -32,8 +32,9 @@ Cada eslabón se separa para permitir reutilización:
 - Un **Dashboard** se guarda como configuración JSON (no como HTML renderizado).
 
 Los dos últimos eslabones (versión inmutable + publicación) son el diseño **objetivo**
-para cuando se retome la publicación pública; hoy `Dashboard` es un tablero exploratorio
-interno con estados `draft/archived` únicamente (ver `docs/modules/dashboards.md`).
+para cuando se retome la publicación pública. El módulo de tableros internos que
+implementaba `Dashboard` se **retiró en 0.1.1** (bugs y alcance sin pulir); `Dashboard`
+permanece solo como eslabón de diseño futuro, sin implementación hoy.
 
 ---
 
@@ -183,9 +184,8 @@ app/
     ├── connections/     CRUD de conexiones + test + explorador de esquema — implementado
     ├── datasets/        SQL guard, playground, preview — implementado
     ├── charts/          ChartSpec 1.0, query builder, versionado — implementado
-    ├── dashboards/      Tableros internos (grid + filtros) — implementado
-    ├── filters/         (placeholder vacío — la lógica de filtros vive en charts.spec
-    │                     y en dashboards.global_filters, no como módulo propio)
+    ├── filters/         (placeholder vacío — la lógica de filtros vive en charts.spec,
+    │                     no como módulo propio)
     ├── public/          (placeholder vacío — pospuesto)
     ├── municipios/      (placeholder vacío — pospuesto)
     ├── audit/           (placeholder vacío — pospuesto, ver docs/checklist.md)
@@ -211,17 +211,16 @@ src/
 │   ├── connections/     Página, formulario y explorador de esquema
 │   ├── datasets/        Playground SQL inline + lista de datasets guardados
 │   ├── charts/          Builder visual, editor JSON (CodeMirror), ChartRenderer (ECharts), temas
-│   ├── dashboards/      Tableros con react-grid-layout + filtros globales/locales
 │   └── public/          Landing pública (`/`) — sin dashboards publicados aún
 ├── lib/
 │   └── csv.ts           downloadCsv — exportación CSV client-side (RFC 4180 + BOM)
 └── types/
-    ├── auth.ts, connections.ts, datasets.ts, charts.ts, dashboards.ts
+    ├── auth.ts, connections.ts, datasets.ts, charts.ts
 ```
 
 **Dos áreas:**
 - `/admin/*` — panel de administración, protegido por `AuthGuard`. Es donde vive todo el
-  laboratorio de datos (conexiones, datasets, gráficas, tableros).
+  laboratorio de datos (conexiones, datasets, gráficas).
 - `/*` — landing pública, sin autenticación. Sin publicación de dashboards todavía
   (pospuesto).
 

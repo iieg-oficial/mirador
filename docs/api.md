@@ -54,13 +54,6 @@ GET            /api/admin/charts/{id}/versions
 POST           /api/admin/charts/{id}/restore/{version_id}
 ```
 
-**Dashboards** — `docs/modules/dashboards.md`
-```
-GET/POST       /api/admin/dashboards
-GET/PUT/DELETE /api/admin/dashboards/{id}            # DELETE archiva
-PUT            /api/admin/dashboards/{id}/items      # reemplazo en bloque del layout
-```
-
 ## Errores comunes
 
 - `422` — validación de payload o de la ChartSpec/SQL (`sql_guard`).
