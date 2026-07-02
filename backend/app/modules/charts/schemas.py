@@ -6,12 +6,30 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from app.modules.datasets.schemas import PreviewResult
+
 
 class ChartSpecPayload(BaseModel):
     """Cuerpo de POST /validate: la spec cruda se parsea en el service para
     devolver errores legibles en vez de un 422 genérico."""
 
     chart_spec: dict[str, Any]
+
+
+class ChartSpecPreviewRequest(BaseModel):
+    """Cuerpo de POST /preview: spec sin guardar + params del dataset (si su SQL
+    usa parámetros nombrados)."""
+
+    chart_spec: dict[str, Any]
+    params: dict[str, Any] = Field(default_factory=dict)
+
+
+class ChartPreviewResult(PreviewResult):
+    """Resultado de preview por spec: filas + la consulta generada (RF-08,
+    visible solo como referencia, nunca editable) y advertencias de validación."""
+
+    generated_sql: str
+    warnings: list[str] = Field(default_factory=list)
 
 
 class ChartCreate(BaseModel):

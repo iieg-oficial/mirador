@@ -1,18 +1,21 @@
-"""Lógica de negocio del módulo charts: CRUD + preview (§6.5)."""
+"""Lógica de negocio del módulo charts: CRUD, validación de spec y preview."""
 
+import hashlib
 import uuid
 
 from sqlmodel import Session, select
 
 from app.modules.auth.models import CurrentUser
 from app.modules.charts.models import Chart
-from app.modules.charts.schemas import ChartCreate, ChartUpdate
+from app.modules.charts.query_builder import build_query
+from app.modules.charts.schemas import ChartCreate, ChartPreviewResult, ChartUpdate
 from app.modules.connections.models import Connection
 from app.modules.datasets.models import Dataset, DatasetStatus
 from app.modules.datasets.schemas import PreviewResult
 from app.modules.datasets import service as dataset_service
 from app.modules.charts.spec import (
     TYPE_FIELDS,
+    ChartSpec,
     ChartSpecValidation,
     parse_spec,
     validate_spec_against_dataset,
@@ -152,6 +155,55 @@ def validate_chart_spec(session: Session, raw_spec: dict) -> ChartSpecValidation
 
     errors, warnings = validate_spec_against_dataset(spec, dataset)
     return ChartSpecValidation(valid=not errors, errors=errors, warnings=warnings)
+
+
+def resolve_spec(session: Session, raw_spec: dict) -> tuple[ChartSpec, Dataset, list[str]]:
+    """Parsea la spec, resuelve su dataset y la valida. Lanza ValueError si no
+    es ejecutable; devuelve (spec, dataset, warnings) si lo es."""
+    spec, schema_errors = parse_spec(raw_spec)
+    if spec is None:
+        raise ValueError(" | ".join(schema_errors))
+
+    dataset = dataset_service.get_dataset(session, spec.data.dataset_id)
+    if dataset is None or dataset.status == DatasetStatus.archived:
+        raise ValueError("El dataset referenciado no existe.")
+    if dataset.status not in (DatasetStatus.validated, DatasetStatus.published):
+        raise ValueError("El dataset debe estar validado antes de graficar sobre él.")
+
+    errors, warnings = validate_spec_against_dataset(spec, dataset)
+    if errors:
+        raise ValueError(" | ".join(errors))
+    return spec, dataset, warnings
+
+
+def preview_spec(
+    connection: Connection,
+    dataset: Dataset,
+    spec: ChartSpec,
+    dataset_params: dict,
+    warnings: list[str],
+) -> ChartPreviewResult:
+    """Genera la consulta desde la spec y la ejecuta (agregación server-side).
+
+    Cachea bajo `{dataset_id}:chart:{hash_del_sql}` — clave distinta a la del
+    dataset crudo pero con su mismo prefijo, así la invalidación por dataset
+    (SCAN ds:{id}:*) también limpia los previews de gráficas.
+    """
+    sql, params, limit = build_query(spec, dataset)
+    cache_id = f"{dataset.id}:chart:{hashlib.sha1(sql.encode()).hexdigest()[:12]}"
+    result = dataset_service.run_query(
+        connection,
+        sql,
+        {**dataset_params, **params},
+        limit,
+        dataset_id=cache_id,
+        cache_ttl_seconds=dataset.cache_ttl_seconds,
+    )
+    return ChartPreviewResult(
+        **result.model_dump(),
+        generated_sql=sql,
+        warnings=warnings,
+    )
 
 
 def preview_chart(

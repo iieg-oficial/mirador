@@ -11,7 +11,14 @@ from app.modules.auth.deps import require_permission
 from app.modules.auth.models import CurrentUser
 from app.modules.charts import service
 from app.modules.charts.models import Chart
-from app.modules.charts.schemas import ChartCreate, ChartRead, ChartSpecPayload, ChartUpdate
+from app.modules.charts.schemas import (
+    ChartCreate,
+    ChartPreviewResult,
+    ChartRead,
+    ChartSpecPayload,
+    ChartSpecPreviewRequest,
+    ChartUpdate,
+)
 from app.modules.charts.spec import ChartSpecValidation
 from app.modules.connections import service as conn_service
 from app.modules.datasets import service as dataset_service
@@ -39,6 +46,38 @@ def validate_chart_spec(
 ) -> ChartSpecValidation:
     """Valida una ChartSpec sin guardarla: esquema, dataset y compatibilidad."""
     return service.validate_chart_spec(session, payload.chart_spec)
+
+
+# ── Preview por spec (RF-05/RF-07/RF-08) ─────────────────────────────────────
+
+
+@router.post("/preview", response_model=ChartPreviewResult)
+def preview_chart_spec(
+    payload: ChartSpecPreviewRequest,
+    session: Session = Depends(get_session),
+    _: CurrentUser = Depends(require_permission("tablerillos.charts.view")),
+) -> ChartPreviewResult:
+    """Previsualiza una spec sin guardarla: genera la consulta segura desde la
+    ChartSpec (agregación server-side) y devuelve filas + SQL generado."""
+    try:
+        spec, dataset, warnings = service.resolve_spec(session, payload.chart_spec)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+
+    connection = conn_service.get_connection(session, dataset.connection_id)
+    if connection is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conexión no encontrada")
+
+    try:
+        return service.preview_spec(connection, dataset, spec, payload.params, warnings)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+    except Exception as exc:
+        log.exception("Error al ejecutar la consulta generada desde la ChartSpec")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Error al ejecutar la consulta generada.",
+        ) from exc
 
 
 # ── CRUD ─────────────────────────────────────────────────────────────────────

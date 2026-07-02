@@ -305,3 +305,53 @@ def test_validate_endpoint_incompatible_spec(client: TestClient) -> None:
     body = res.json()
     assert body["valid"] is False
     assert any("inexistente" in e for e in body["errors"])
+
+
+# ── Endpoint POST /charts/preview (por spec) ──────────────────────────────────
+
+
+def test_preview_endpoint_returns_rows_and_generated_sql(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.modules.datasets.schemas import ColumnMeta, PreviewResult
+
+    captured: dict = {}
+
+    def fake_run_query(connection, sql, params, max_rows, **kwargs):  # type: ignore[no-untyped-def]
+        captured["sql"] = sql
+        captured["params"] = params
+        captured["max_rows"] = max_rows
+        return PreviewResult(
+            columns=[
+                ColumnMeta(name="municipio", data_type="text"),
+                ColumnMeta(name="poblacion", data_type="int8"),
+            ],
+            rows=[{"municipio": "Guadalajara", "poblacion": 1500000}],
+            total_rows=1,
+            truncated=False,
+            elapsed_ms=1.0,
+        )
+
+    monkeypatch.setattr(datasets_service, "run_query", fake_run_query)
+
+    dataset_id = _create_dataset(client)
+    raw = _raw_spec()
+    raw["data"]["dataset_id"] = dataset_id
+    raw["data"]["filters"] = [{"field": "municipio", "operator": "=", "value": "Guadalajara"}]
+
+    res = client.post("/api/admin/charts/preview", json={"chart_spec": raw})
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body["rows"][0]["municipio"] == "Guadalajara"
+    assert 'GROUP BY "municipio"' in body["generated_sql"]
+    assert captured["params"] == {"_f0": "Guadalajara"}
+    assert captured["max_rows"] == 100  # límite de la spec
+
+
+def test_preview_endpoint_invalid_spec_is_422(client: TestClient) -> None:
+    dataset_id = _create_dataset(client)
+    raw = _raw_spec(encodings={"x": [{"field": "nope"}], "y": [{"field": "poblacion"}]})
+    raw["data"]["dataset_id"] = dataset_id
+    res = client.post("/api/admin/charts/preview", json={"chart_spec": raw})
+    assert res.status_code == 422
+    assert "nope" in res.json()["detail"]
