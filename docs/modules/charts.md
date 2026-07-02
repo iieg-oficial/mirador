@@ -54,7 +54,8 @@ Frontend: `GraficasPage.tsx` (builder visual con drag-and-drop, filtros, agregac
     "fields": {}
   },
   "interactions": { "tooltip": true, "legend": true, "zoom": false, "download": false },
-  "style": { "theme": "institutional", "show_labels": false, "orientation": "vertical", "legend_position": "top" }
+  "style": { "theme": "institutional", "show_labels": false, "orientation": "vertical", "legend_position": "top" },
+  "overrides": { "legend": { "orient": "vertical", "right": 0 } }
 }
 ```
 
@@ -62,6 +63,8 @@ Frontend: `GraficasPage.tsx` (builder visual con drag-and-drop, filtros, agregac
 - **Operadores de filtro:** `= != > >= < <= in not_in contains between is_null is_not_null`, validados por forma del valor.
 - **Agregaciones:** `sum avg min max count count_distinct`, limitadas por columna según la metadata semántica del dataset (`columns_schema`).
 - Reglas por tipo (pie/treemap 1 dim + 1 métrica, kpi métrica agregada, etc.) en `spec.py`.
+- **`overrides` (opcional):** personalización controlada del EChartsOption generado. Whitelist de secciones (`legend`/`tooltip`/`grid`), cada valor un objeto JSON puro; el backend rechaza otras secciones, claves peligrosas (`__proto__`/`constructor`/`prototype`, anti prototype-pollution) y payloads > 8 KB. El frontend hace deep-merge (`applyOverrides` en `ChartRenderer.tsx`) sobre el option antes de `setOption`; el editor avanzado muestra el resultado ya fusionado. Sin funciones ni código: los `formatter` string de ECharts son plantillas.
+- **Temas (`style.theme`):** `institutional` (default) o `default`. El tema institucional (paleta morada/naranja IIEG-Jalisco) se registra en `frontend/src/features/charts/themes.ts` y se pasa a `echarts.init`; `default` usa el tema base de ECharts.
 
 ## Generación segura de consulta
 
