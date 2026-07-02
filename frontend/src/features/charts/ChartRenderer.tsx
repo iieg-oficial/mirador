@@ -45,7 +45,7 @@ function buildOption(
   visualConfig: VisualConfig,
   rows: Record<string, unknown>[],
 ): EChartsOption {
-  const { x, y, series } = fieldMapping
+  const { x, y, series, fields = {} } = fieldMapping
   const x0 = x[0] ?? ''
   const y0 = y[0] ?? ''
   const {
@@ -67,8 +67,15 @@ function buildOption(
     ? { show: true, ...legendPositionOption(legend_position) }
     : { show: false }
 
-  // ── Pastel / Dona ──────────────────────────────────────────────────────────
-  if (chartType === 'pie' || chartType === 'donut') {
+  const categoryAxis = {
+    type: 'category' as const,
+    data: rows.map((r) => compositeValue(x, r)),
+    axisLabel: { overflow: 'truncate' as const, width: 80 },
+  }
+  const gridOpt = { containLabel: true, left: 16, right: 16, top: title ? 56 : 16, bottom: 16 }
+
+  // ── Pastel ─────────────────────────────────────────────────────────────────
+  if (chartType === 'pie') {
     return {
       title: baseTitle,
       legend: legendOpt,
@@ -76,9 +83,26 @@ function buildOption(
       series: [
         {
           type: 'pie',
-          radius: chartType === 'donut' ? ['40%', '70%'] : '65%',
+          radius: '65%',
           itemStyle: { borderRadius: 4, borderColor: '#fff', borderWidth: 2 },
           label: { formatter: '{b}\n{d}%' },
+          data: rows.map((r) => ({ name: compositeValue(x, r), value: numericValue(r[y0]) })),
+        },
+      ],
+    }
+  }
+
+  // ── Treemap ─────────────────────────────────────────────────────────────────
+  if (chartType === 'treemap') {
+    return {
+      title: baseTitle,
+      tooltip: { trigger: 'item', formatter: '{b}: {c}' },
+      series: [
+        {
+          type: 'treemap',
+          roam: false,
+          breadcrumb: { show: false },
+          label: { show: true, formatter: '{b}' },
           data: rows.map((r) => ({ name: compositeValue(x, r), value: numericValue(r[y0]) })),
         },
       ],
@@ -103,13 +127,46 @@ function buildOption(
     }
   }
 
-  // ── Barras, Líneas, Área ───────────────────────────────────────────────────
-  const isHorizontal = chartType === 'bar_horizontal'
-  const eType = chartType.startsWith('bar') ? 'bar' : 'line'
-  const isArea = chartType === 'area'
-  const areaStyle = isArea ? { opacity: 0.25 } : undefined
+  // ── Velas (candlestick): [open, close, lowest, highest] por categoría ────────
+  if (chartType === 'candlestick') {
+    const keys = ['open', 'close', 'lowest', 'highest'] as const
+    return {
+      title: baseTitle,
+      tooltip: { trigger: 'axis' },
+      grid: gridOpt,
+      xAxis: categoryAxis,
+      yAxis: { type: 'value', scale: true },
+      series: [
+        {
+          type: 'candlestick',
+          data: rows.map((r) => keys.map((k) => numericValue(r[fields[k]]))),
+        },
+      ],
+    }
+  }
 
-  let seriesData: { name: string; type: string; areaStyle?: { opacity: number }; data: unknown[] }[]
+  // ── Caja y bigotes (boxplot): [min, Q1, mediana, Q3, max] por categoría ──────
+  if (chartType === 'boxplot') {
+    const keys = ['min', 'q1', 'median', 'q3', 'max'] as const
+    return {
+      title: baseTitle,
+      tooltip: { trigger: 'item' },
+      grid: gridOpt,
+      xAxis: categoryAxis,
+      yAxis: { type: 'value', scale: true },
+      series: [
+        {
+          type: 'boxplot',
+          data: rows.map((r) => keys.map((k) => numericValue(r[fields[k]]))),
+        },
+      ],
+    }
+  }
+
+  // ── Barras / Líneas ─────────────────────────────────────────────────────────
+  const eType = chartType === 'bar' ? 'bar' : 'line'
+
+  let seriesData: { name: string; type: string; data: unknown[] }[]
   let categoryData: string[]
 
   if (series) {
@@ -120,7 +177,6 @@ function buildOption(
     seriesData = uniqueSeries.map((sv) => ({
       name: sv,
       type: eType,
-      areaStyle,
       data: categoryData.map((xv) => {
         const row = rows.find(
           (r) => compositeValue(x, r) === xv && String(r[series] ?? '') === sv,
@@ -134,29 +190,20 @@ function buildOption(
     seriesData = y.map((yCol) => ({
       name: yCol,
       type: eType,
-      areaStyle,
       data: rows.map((r) => r[yCol]),
     }))
   } else {
     categoryData = rows.map((r) => compositeValue(x, r))
-    seriesData = [{ name: y0, type: eType, areaStyle, data: rows.map((r) => r[y0]) }]
+    seriesData = [{ name: y0, type: eType, data: rows.map((r) => r[y0]) }]
   }
-
-  const catAxis = {
-    type: 'category' as const,
-    data: categoryData,
-    axisLabel: { overflow: 'truncate' as const, width: 80 },
-  }
-  const valAxis = { type: 'value' as const }
 
   return {
     title: baseTitle,
     legend: legendOpt,
     tooltip: { trigger: 'axis' as const },
-    grid: { containLabel: true, left: 16, right: 16, top: title ? 56 : 16, bottom: 16 },
-    ...(isHorizontal
-      ? { xAxis: valAxis, yAxis: { ...catAxis, inverse: true } }
-      : { xAxis: catAxis, yAxis: valAxis }),
+    grid: gridOpt,
+    xAxis: { ...categoryAxis, data: categoryData },
+    yAxis: { type: 'value' as const },
     series: seriesData,
   } as EChartsOption
 }

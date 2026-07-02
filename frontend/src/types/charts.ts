@@ -1,19 +1,22 @@
 export type ChartType =
-  | 'bar'
-  | 'bar_horizontal'
   | 'line'
-  | 'area'
+  | 'bar'
   | 'pie'
-  | 'donut'
   | 'scatter'
+  | 'candlestick'
+  | 'boxplot'
+  | 'treemap'
 
 // x/y aceptan varias columnas (ejes multicolumna): y → series múltiples,
 // x → categoría compuesta cuando hay más de una columna. series sigue siendo
-// una sola columna de agrupación.
+// una sola columna de agrupación. `fields` lleva columnas nombradas para los
+// tipos con forma especial: candlestick (open/close/lowest/highest) y boxplot
+// (min/q1/median/q3/max); esos usan x = [categoría] y no usan y.
 export interface FieldMapping {
   x: string[]
   y: string[]
   series?: string | null
+  fields?: Record<string, string>
 }
 
 export const LEGEND_POSITIONS = [
@@ -82,11 +85,11 @@ export interface ChartUpdate {
 }
 
 export const CHART_TYPE_LABELS: Record<ChartType, string> = {
-  bar: 'Barras verticales',
-  bar_horizontal: 'Barras horizontales',
   line: 'Líneas',
-  area: 'Área',
+  bar: 'Barras',
   pie: 'Pastel',
-  donut: 'Dona',
   scatter: 'Dispersión',
+  candlestick: 'Velas (candlestick)',
+  boxplot: 'Caja y bigotes (boxplot)',
+  treemap: 'Treemap',
 }

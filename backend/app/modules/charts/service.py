@@ -13,7 +13,13 @@ from app.modules.datasets.schemas import PreviewResult
 from app.modules.datasets import service as dataset_service
 
 # Tipos de gráfica que el renderer ECharts del frontend sabe montar.
-_CHART_TYPES = {"bar", "line", "area", "pie", "donut", "scatter", "gauge", "heatmap", "treemap"}
+_CHART_TYPES = {"line", "bar", "pie", "scatter", "candlestick", "boxplot", "treemap"}
+
+# Tipos con columnas nombradas (viven en field_mapping["fields"]) en vez de x/y.
+_TYPE_FIELDS: dict[str, tuple[str, ...]] = {
+    "candlestick": ("open", "close", "lowest", "highest"),
+    "boxplot": ("min", "q1", "median", "q3", "max"),
+}
 
 
 def _dataset_column_names(dataset: Dataset) -> set[str]:
@@ -22,13 +28,15 @@ def _dataset_column_names(dataset: Dataset) -> set[str]:
 
 
 def _referenced_columns(field_mapping: dict) -> set[str]:
-    """Columnas referenciadas en el mapeo (valores str o listas de str)."""
+    """Columnas referenciadas en el mapeo (valores str, listas de str o dict de str)."""
     cols: set[str] = set()
     for value in field_mapping.values():
         if isinstance(value, str):
             cols.add(value)
         elif isinstance(value, list):
             cols.update(v for v in value if isinstance(v, str))
+        elif isinstance(value, dict):  # p. ej. `fields` de candlestick/boxplot
+            cols.update(v for v in value.values() if isinstance(v, str))
     return cols
 
 
@@ -41,6 +49,22 @@ def _validate_spec(chart_type: str, field_mapping: dict, dataset: Dataset) -> No
         )
     if not field_mapping:
         raise ValueError("field_mapping no puede estar vacío.")
+
+    required = _TYPE_FIELDS.get(chart_type)
+    if required:
+        fields = field_mapping.get("fields")
+        missing = (
+            list(required)
+            if not isinstance(fields, dict)
+            else [k for k in required if not fields.get(k)]
+        )
+        if missing:
+            raise ValueError(
+                f"'{chart_type}' requiere field_mapping.fields con: {', '.join(missing)}."
+            )
+    elif not field_mapping.get("x") or not field_mapping.get("y"):
+        raise ValueError("field_mapping requiere las columnas 'x' e 'y'.")
+
     known = _dataset_column_names(dataset)
     # Solo se valida el mapeo si el dataset ya tiene columnas inferidas.
     if known:

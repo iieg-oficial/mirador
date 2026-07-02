@@ -12,14 +12,63 @@ import { CHART_TYPE_LABELS, LEGEND_POSITIONS, LEGEND_POSITION_LABELS } from '@/t
 // ── Constantes ────────────────────────────────────────────────────────────────
 
 const CHART_TYPES: ChartType[] = [
-  'bar',
-  'bar_horizontal',
   'line',
-  'area',
+  'bar',
   'pie',
-  'donut',
   'scatter',
+  'candlestick',
+  'boxplot',
+  'treemap',
 ]
+
+// Zonas de mapeo por tipo de gráfica. `x/y/series` van a fieldX/fieldY/fieldSeries;
+// `field` va a state.fields[fieldKey] (columnas nombradas de candlestick/boxplot).
+interface ZoneDef {
+  slot: 'x' | 'y' | 'series' | 'field'
+  fieldKey?: string
+  label: string
+  hint?: string
+  single?: boolean
+  required?: boolean
+}
+
+const XY_ZONES: ZoneDef[] = [
+  { slot: 'x', label: 'Eje X (categoría)', hint: 'Una o varias columnas', required: true },
+  { slot: 'y', label: 'Eje Y (valor)', hint: 'Una o varias columnas', required: true },
+  { slot: 'series', label: 'Serie (opcional)', hint: 'Sin agrupación', single: true },
+]
+
+const ZONES_BY_TYPE: Record<ChartType, ZoneDef[]> = {
+  line: XY_ZONES,
+  bar: XY_ZONES,
+  pie: [
+    { slot: 'x', label: 'Categoría', hint: 'Una o varias columnas', required: true },
+    { slot: 'y', label: 'Valor', single: true, required: true },
+  ],
+  scatter: [
+    { slot: 'x', label: 'Eje X (valor)', single: true, required: true },
+    { slot: 'y', label: 'Eje Y (valor)', single: true, required: true },
+  ],
+  treemap: [
+    { slot: 'x', label: 'Nombre', hint: 'Una o varias columnas', required: true },
+    { slot: 'y', label: 'Valor', single: true, required: true },
+  ],
+  candlestick: [
+    { slot: 'x', label: 'Categoría (eje X)', single: true, required: true },
+    { slot: 'field', fieldKey: 'open', label: 'Apertura (open)', single: true, required: true },
+    { slot: 'field', fieldKey: 'close', label: 'Cierre (close)', single: true, required: true },
+    { slot: 'field', fieldKey: 'lowest', label: 'Mínimo (lowest)', single: true, required: true },
+    { slot: 'field', fieldKey: 'highest', label: 'Máximo (highest)', single: true, required: true },
+  ],
+  boxplot: [
+    { slot: 'x', label: 'Categoría (eje X)', single: true, required: true },
+    { slot: 'field', fieldKey: 'min', label: 'Mínimo', single: true, required: true },
+    { slot: 'field', fieldKey: 'q1', label: 'Q1', single: true, required: true },
+    { slot: 'field', fieldKey: 'median', label: 'Mediana', single: true, required: true },
+    { slot: 'field', fieldKey: 'q3', label: 'Q3', single: true, required: true },
+    { slot: 'field', fieldKey: 'max', label: 'Máximo', single: true, required: true },
+  ],
+}
 
 // ── Helpers UI ────────────────────────────────────────────────────────────────
 
@@ -307,6 +356,7 @@ interface BuilderState {
   fieldX: string[]
   fieldY: string[]
   fieldSeries: string[]
+  fields: Record<string, string>
   title: string
   subtitle: string
   showLegend: boolean
@@ -321,6 +371,7 @@ const BUILDER_DEFAULTS: BuilderState = {
   fieldX: [],
   fieldY: [],
   fieldSeries: [],
+  fields: {},
   title: '',
   subtitle: '',
   showLegend: true,
@@ -345,6 +396,7 @@ function builderFromChart(chart: Chart): BuilderState {
     fieldX: asColumnArray(fm.x),
     fieldY: asColumnArray(fm.y),
     fieldSeries: fm.series ? [fm.series] : [],
+    fields: fm.fields ?? {},
     title: vc.title ?? '',
     subtitle: vc.subtitle ?? '',
     showLegend: vc.show_legend ?? true,
@@ -390,12 +442,50 @@ function ChartBuilder({
   const schemaColumns: ColumnMeta[] =
     selectedDataset?.columns_schema?.columns ?? previewData?.columns ?? []
 
-  const canSave =
-    state.name.trim() &&
-    state.datasetId &&
-    state.chartType &&
-    state.fieldX.length > 0 &&
-    state.fieldY.length > 0
+  const zones = ZONES_BY_TYPE[state.chartType]
+
+  const zoneValues = (z: ZoneDef): string[] => {
+    if (z.slot === 'x') return state.fieldX
+    if (z.slot === 'y') return state.fieldY
+    if (z.slot === 'series') return state.fieldSeries
+    const v = state.fields[z.fieldKey!]
+    return v ? [v] : []
+  }
+
+  const setZoneValues = (z: ZoneDef, values: string[]) => {
+    if (z.slot === 'x') return set('fieldX', values)
+    if (z.slot === 'y') return set('fieldY', values)
+    if (z.slot === 'series') return set('fieldSeries', values)
+    setState((prev) => {
+      const next = { ...prev.fields }
+      if (values[0]) next[z.fieldKey!] = values[0]
+      else delete next[z.fieldKey!]
+      return { ...prev, fields: next }
+    })
+  }
+
+  const requiredFilled = zones.every((z) => !z.required || zoneValues(z).length > 0)
+  const canSave = Boolean(
+    state.name.trim() && state.datasetId && state.chartType && requiredFilled,
+  )
+
+  // Al cambiar de tipo, conserva solo las zonas que el nuevo tipo usa (evita
+  // mapeos huérfanos que el backend rechazaría o el render ignoraría).
+  function changeChartType(next: ChartType) {
+    const z = ZONES_BY_TYPE[next]
+    const usesX = z.some((zz) => zz.slot === 'x')
+    const usesY = z.some((zz) => zz.slot === 'y')
+    const usesSeries = z.some((zz) => zz.slot === 'series')
+    const keepFields = new Set(z.filter((zz) => zz.slot === 'field').map((zz) => zz.fieldKey))
+    setState((prev) => ({
+      ...prev,
+      chartType: next,
+      fieldX: usesX ? prev.fieldX : [],
+      fieldY: usesY ? prev.fieldY : [],
+      fieldSeries: usesSeries ? prev.fieldSeries : [],
+      fields: Object.fromEntries(Object.entries(prev.fields).filter(([k]) => keepFields.has(k))),
+    }))
+  }
 
   function addToZone(zone: FieldZone, column: string) {
     if (zone === 'series') {
@@ -435,6 +525,7 @@ function ChartBuilder({
         x: state.fieldX,
         y: state.fieldY,
         series: state.fieldSeries[0] || null,
+        fields: Object.keys(state.fields).length ? state.fields : undefined,
       }
       const visualConfig: VisualConfig = {
         title: state.title || null,
@@ -471,6 +562,7 @@ function ChartBuilder({
     x: state.fieldX,
     y: state.fieldY,
     series: state.fieldSeries[0] || undefined,
+    fields: Object.keys(state.fields).length ? state.fields : undefined,
   }
   const visualConfig: VisualConfig = {
     title: state.title || undefined,
@@ -479,13 +571,12 @@ function ChartBuilder({
     legend_position: state.legendPosition,
   }
 
+  const referencedCols = zones.flatMap((z) => zoneValues(z))
   const showChart =
     previewData &&
     previewData.rows.length > 0 &&
-    state.fieldX.length > 0 &&
-    state.fieldY.length > 0 &&
-    state.fieldX.every((c) => previewData.columns.some((col) => col.name === c)) &&
-    state.fieldY.every((c) => previewData.columns.some((col) => col.name === c))
+    requiredFilled &&
+    referencedCols.every((c) => previewData.columns.some((col) => col.name === c))
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
@@ -524,6 +615,7 @@ function ChartBuilder({
               set('fieldX', [])
               set('fieldY', [])
               set('fieldSeries', [])
+              set('fields', {})
             }}
             options={datasets.map((d) => ({ value: d.id, label: d.name }))}
           />
@@ -531,7 +623,7 @@ function ChartBuilder({
             label="Tipo de visualización"
             required
             value={state.chartType}
-            onChange={(v) => set('chartType', v as ChartType)}
+            onChange={(v) => changeChartType(v as ChartType)}
             options={CHART_TYPES.map((t) => ({ value: t, label: CHART_TYPE_LABELS[t] }))}
           />
         </div>
@@ -581,30 +673,22 @@ function ChartBuilder({
               Arrastra columnas del esquema (o usa los botones X/Y/S al pasar el cursor).
             </p>
 
-            <FieldDropZone
-              label="Eje X (categoría)"
-              hint="Arrastra una o varias columnas"
-              values={state.fieldX}
-              onChange={(v) => set('fieldX', v)}
-            />
-            <FieldDropZone
-              label="Eje Y (valor)"
-              hint="Arrastra una o varias columnas"
-              values={state.fieldY}
-              onChange={(v) => set('fieldY', v)}
-            />
-            <FieldDropZone
-              label="Serie (opcional)"
-              hint="Sin agrupación"
-              values={state.fieldSeries}
-              onChange={(v) => set('fieldSeries', v)}
-              maxItems={1}
-            />
-            {state.fieldY.length > 1 && (
-              <p className="text-[11px] text-gray-400">
-                Varias columnas en Eje Y se grafican como series separadas.
-              </p>
-            )}
+            {zones.map((z) => (
+              <FieldDropZone
+                key={z.slot === 'field' ? `field:${z.fieldKey}` : z.slot}
+                label={z.required ? `${z.label} *` : z.label}
+                hint={z.hint}
+                values={zoneValues(z)}
+                onChange={(v) => setZoneValues(z, v)}
+                maxItems={z.single ? 1 : undefined}
+              />
+            ))}
+            {(state.chartType === 'bar' || state.chartType === 'line') &&
+              state.fieldY.length > 1 && (
+                <p className="text-[11px] text-gray-400">
+                  Varias columnas en Eje Y se grafican como series separadas.
+                </p>
+              )}
           </div>
         </div>
 

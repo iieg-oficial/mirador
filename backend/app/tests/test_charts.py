@@ -44,10 +44,18 @@ _CHART_PAYLOAD = {
 }
 
 
+# Columnas que el dataset de prueba "expone" (superset para cubrir todos los tipos).
+_SCHEMA_COLS = [
+    "municipio", "anio", "fecha",
+    "open", "close", "lowest", "highest",  # candlestick
+    "vmin", "q1", "median", "q3", "vmax",  # boxplot
+]
+
+
 @pytest.fixture(autouse=True)
 def _mock_infer_schema(monkeypatch: pytest.MonkeyPatch) -> None:
     def fake_infer_schema(connection, sql):  # type: ignore[no-untyped-def]
-        return ([{"name": "municipio", "data_type": "text"}], [])
+        return ([{"name": c, "data_type": "text"} for c in _SCHEMA_COLS], [])
 
     monkeypatch.setattr(datasets_service, "_infer_schema", fake_infer_schema)
 
@@ -74,7 +82,11 @@ def test_create_chart_ok(client: TestClient) -> None:
 
 def test_create_chart_unknown_column_returns_422(client: TestClient) -> None:
     dataset_id = _create_dataset(client)
-    payload = {**_CHART_PAYLOAD, "dataset_id": dataset_id, "field_mapping": {"x": "inexistente"}}
+    payload = {
+        **_CHART_PAYLOAD,
+        "dataset_id": dataset_id,
+        "field_mapping": {"x": "inexistente", "y": "inexistente"},
+    }
     res = client.post("/api/admin/charts", json=payload)
     assert res.status_code == 422, res.text
     assert "inexistente" in res.text
@@ -85,6 +97,54 @@ def test_create_chart_bad_type_returns_422(client: TestClient) -> None:
     payload = {**_CHART_PAYLOAD, "dataset_id": dataset_id, "chart_type": "wormhole"}
     res = client.post("/api/admin/charts", json=payload)
     assert res.status_code == 422, res.text
+
+
+def test_create_candlestick_ok(client: TestClient) -> None:
+    dataset_id = _create_dataset(client)
+    payload = {
+        "name": "Velas",
+        "chart_type": "candlestick",
+        "dataset_id": dataset_id,
+        "field_mapping": {
+            "x": ["fecha"],
+            "y": [],
+            "fields": {"open": "open", "close": "close", "lowest": "lowest", "highest": "highest"},
+        },
+        "visual_config": {},
+    }
+    res = client.post("/api/admin/charts", json=payload)
+    assert res.status_code == 201, res.text
+
+
+def test_create_candlestick_missing_field_returns_422(client: TestClient) -> None:
+    dataset_id = _create_dataset(client)
+    payload = {
+        "name": "Velas incompletas",
+        "chart_type": "candlestick",
+        "dataset_id": dataset_id,
+        "field_mapping": {"x": ["fecha"], "y": [], "fields": {"open": "open", "close": "close"}},
+        "visual_config": {},
+    }
+    res = client.post("/api/admin/charts", json=payload)
+    assert res.status_code == 422, res.text
+    assert "lowest" in res.text and "highest" in res.text
+
+
+def test_create_boxplot_ok(client: TestClient) -> None:
+    dataset_id = _create_dataset(client)
+    payload = {
+        "name": "Cajas",
+        "chart_type": "boxplot",
+        "dataset_id": dataset_id,
+        "field_mapping": {
+            "x": ["municipio"],
+            "y": [],
+            "fields": {"min": "vmin", "q1": "q1", "median": "median", "q3": "q3", "max": "vmax"},
+        },
+        "visual_config": {},
+    }
+    res = client.post("/api/admin/charts", json=payload)
+    assert res.status_code == 201, res.text
 
 
 def test_create_chart_missing_dataset_returns_404(client: TestClient) -> None:

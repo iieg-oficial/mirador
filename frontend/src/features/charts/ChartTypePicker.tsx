@@ -10,34 +10,6 @@ const C = ['#7c3aed', '#9a52ba', '#c084fc', '#f97316', '#fb923c', '#4ade80']
 // ── Opciones de muestra por tipo ──────────────────────────────────────────────
 
 const SAMPLE_OPTIONS: Record<ChartType, EChartsOption> = {
-  bar: {
-    animation: false,
-    color: [C[0]],
-    grid: { top: 6, right: 6, bottom: 6, left: 6, containLabel: false },
-    xAxis: { type: 'category', data: ['Ene', 'Feb', 'Mar', 'Abr', 'May'], show: false },
-    yAxis: { type: 'value', show: false },
-    series: [{
-      type: 'bar',
-      data: [45, 78, 32, 91, 56],
-      barMaxWidth: 22,
-      itemStyle: { borderRadius: [3, 3, 0, 0] },
-    }],
-  },
-
-  bar_horizontal: {
-    animation: false,
-    color: [C[0]],
-    grid: { top: 6, right: 6, bottom: 6, left: 6, containLabel: false },
-    yAxis: { type: 'category', data: ['Tlaquepaque', 'Zapopan', 'Tonalá', 'GDL', 'Tlajom.'], show: false, inverse: true },
-    xAxis: { type: 'value', show: false },
-    series: [{
-      type: 'bar',
-      data: [32, 45, 56, 91, 78],
-      barMaxWidth: 14,
-      itemStyle: { borderRadius: [0, 3, 3, 0] },
-    }],
-  },
-
   line: {
     animation: false,
     color: [C[0]],
@@ -53,19 +25,17 @@ const SAMPLE_OPTIONS: Record<ChartType, EChartsOption> = {
     }],
   },
 
-  area: {
+  bar: {
     animation: false,
     color: [C[0]],
     grid: { top: 6, right: 6, bottom: 6, left: 6, containLabel: false },
-    xAxis: { type: 'category', data: ['E', 'F', 'M', 'A', 'M', 'J', 'J'], show: false },
+    xAxis: { type: 'category', data: ['Ene', 'Feb', 'Mar', 'Abr', 'May'], show: false },
     yAxis: { type: 'value', show: false },
     series: [{
-      type: 'line',
-      data: [32, 48, 41, 67, 58, 80, 72],
-      smooth: true,
-      symbol: 'none',
-      lineStyle: { width: 2.5 },
-      areaStyle: { opacity: 0.25 },
+      type: 'bar',
+      data: [45, 78, 32, 91, 56],
+      barMaxWidth: 22,
+      itemStyle: { borderRadius: [3, 3, 0, 0] },
     }],
   },
 
@@ -75,24 +45,6 @@ const SAMPLE_OPTIONS: Record<ChartType, EChartsOption> = {
     series: [{
       type: 'pie',
       radius: '72%',
-      center: ['50%', '50%'],
-      data: [
-        { value: 38, name: 'A' },
-        { value: 26, name: 'B' },
-        { value: 21, name: 'C' },
-        { value: 15, name: 'D' },
-      ],
-      label: { show: false },
-      itemStyle: { borderRadius: 3, borderColor: '#fff', borderWidth: 2 },
-    }],
-  },
-
-  donut: {
-    animation: false,
-    color: C,
-    series: [{
-      type: 'pie',
-      radius: ['44%', '72%'],
       center: ['50%', '50%'],
       data: [
         { value: 38, name: 'A' },
@@ -121,6 +73,49 @@ const SAMPLE_OPTIONS: Record<ChartType, EChartsOption> = {
       ],
     }],
   },
+
+  candlestick: {
+    animation: false,
+    grid: { top: 6, right: 6, bottom: 6, left: 6, containLabel: false },
+    xAxis: { type: 'category', data: ['1', '2', '3', '4', '5'], show: false },
+    yAxis: { type: 'value', show: false, scale: true },
+    series: [{
+      type: 'candlestick',
+      itemStyle: { color: C[5], color0: C[3], borderColor: C[5], borderColor0: C[3] },
+      // [open, close, lowest, highest]
+      data: [[20, 34, 18, 36], [34, 28, 26, 40], [28, 40, 25, 42], [40, 38, 33, 45], [38, 48, 36, 50]],
+    }],
+  },
+
+  boxplot: {
+    animation: false,
+    color: [C[0]],
+    grid: { top: 8, right: 6, bottom: 6, left: 6, containLabel: false },
+    xAxis: { type: 'category', data: ['A', 'B', 'C', 'D'], show: false },
+    yAxis: { type: 'value', show: false, scale: true },
+    series: [{
+      type: 'boxplot',
+      // [min, Q1, mediana, Q3, max]
+      data: [[10, 18, 25, 32, 40], [12, 20, 28, 35, 44], [8, 15, 22, 30, 38], [14, 22, 30, 38, 48]],
+    }],
+  },
+
+  treemap: {
+    animation: false,
+    color: C,
+    series: [{
+      type: 'treemap',
+      roam: false,
+      breadcrumb: { show: false },
+      label: { show: false },
+      data: [
+        { name: 'A', value: 40 },
+        { name: 'B', value: 26 },
+        { name: 'C', value: 20 },
+        { name: 'D', value: 14 },
+      ],
+    }],
+  },
 }
 
 // ── Descripciones ─────────────────────────────────────────────────────────────
@@ -132,28 +127,16 @@ const CHART_META: {
   usoClave: string
 }[] = [
   {
-    type: 'bar',
-    label: 'Barras verticales',
-    description: 'Compara valores entre categorías',
-    usoClave: 'Rankings, comparativos puntuales',
-  },
-  {
-    type: 'bar_horizontal',
-    label: 'Barras horizontales',
-    description: 'Ideal cuando los nombres de categoría son largos',
-    usoClave: 'Municipios, instituciones, sectores',
-  },
-  {
     type: 'line',
     label: 'Líneas',
     description: 'Muestra tendencias a lo largo del tiempo',
     usoClave: 'Series temporales, evolución de indicadores',
   },
   {
-    type: 'area',
-    label: 'Área',
-    description: 'Línea con área rellena para enfatizar volumen',
-    usoClave: 'Acumulados, magnitud de una tendencia',
+    type: 'bar',
+    label: 'Barras',
+    description: 'Compara valores entre categorías',
+    usoClave: 'Rankings, comparativos puntuales',
   },
   {
     type: 'pie',
@@ -162,16 +145,28 @@ const CHART_META: {
     usoClave: 'Participación porcentual (máx. 6–7 categorías)',
   },
   {
-    type: 'donut',
-    label: 'Dona',
-    description: 'Proporciones con espacio central para KPI',
-    usoClave: 'Distribución con un valor destacado al centro',
-  },
-  {
     type: 'scatter',
     label: 'Dispersión',
     description: 'Relación entre dos variables numéricas',
     usoClave: 'Correlaciones, detección de outliers',
+  },
+  {
+    type: 'candlestick',
+    label: 'Velas (candlestick)',
+    description: 'Apertura, cierre, mínimo y máximo por periodo',
+    usoClave: 'Series financieras, rangos de valores',
+  },
+  {
+    type: 'boxplot',
+    label: 'Caja y bigotes (boxplot)',
+    description: 'Distribución por cuartiles (min, Q1, mediana, Q3, max)',
+    usoClave: 'Dispersión y valores atípicos por categoría',
+  },
+  {
+    type: 'treemap',
+    label: 'Treemap',
+    description: 'Proporciones como rectángulos anidados',
+    usoClave: 'Participación de muchas categorías en un total',
   },
 ]
 
