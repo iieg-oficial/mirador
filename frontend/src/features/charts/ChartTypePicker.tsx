@@ -9,7 +9,8 @@ const C = ['#7c3aed', '#9a52ba', '#c084fc', '#f97316', '#fb923c', '#4ade80']
 
 // ── Opciones de muestra por tipo ──────────────────────────────────────────────
 
-const SAMPLE_OPTIONS: Record<ChartType, EChartsOption> = {
+// table/kpi no son ECharts: sus tarjetas usan un preview estático (abajo).
+const SAMPLE_OPTIONS: Partial<Record<ChartType, EChartsOption>> = {
   line: {
     animation: false,
     color: [C[0]],
@@ -168,7 +169,49 @@ const CHART_META: {
     description: 'Proporciones como rectángulos anidados',
     usoClave: 'Participación de muchas categorías en un total',
   },
+  {
+    type: 'table',
+    label: 'Tabla',
+    description: 'Datos tabulares con varias dimensiones y métricas',
+    usoClave: 'Detalle de registros, exploración de datos',
+  },
+  {
+    type: 'kpi',
+    label: 'Tarjeta KPI',
+    description: 'Un indicador agregado en grande',
+    usoClave: 'Totales, promedios, valores clave',
+  },
 ]
+
+// ── Previews estáticos para tipos que no son ECharts ──────────────────────────
+
+function StaticPreview({ type }: { type: ChartType }) {
+  if (type === 'kpi') {
+    return (
+      <div className="flex h-28 w-full flex-col items-center justify-center">
+        <span className="text-2xl font-bold text-iieg-700">8.4M</span>
+        <span className="mt-1 text-[10px] uppercase tracking-wider text-gray-400">
+          Población total
+        </span>
+      </div>
+    )
+  }
+  // Tabla: filas simuladas.
+  return (
+    <div className="flex h-28 w-full flex-col justify-center gap-1 px-2">
+      <div className="flex gap-1">
+        <div className="h-3 flex-1 rounded-sm bg-iieg-200" />
+        <div className="h-3 w-10 rounded-sm bg-iieg-200" />
+      </div>
+      {[0, 1, 2, 3].map((i) => (
+        <div key={i} className="flex gap-1">
+          <div className="h-2.5 flex-1 rounded-sm bg-gray-100" />
+          <div className="h-2.5 w-10 rounded-sm bg-gray-100" />
+        </div>
+      ))}
+    </div>
+  )
+}
 
 // ── Mini preview con ECharts ──────────────────────────────────────────────────
 
@@ -211,7 +254,11 @@ function ChartTypeCard({
           selected ? 'border-iieg-200 bg-iieg-50' : 'border-gray-100 bg-gray-50 group-hover:bg-gray-50'
         }`}
       >
-        <MiniChart option={SAMPLE_OPTIONS[meta.type]} />
+        {SAMPLE_OPTIONS[meta.type] ? (
+          <MiniChart option={SAMPLE_OPTIONS[meta.type]!} />
+        ) : (
+          <StaticPreview type={meta.type} />
+        )}
       </div>
 
       {/* Info */}

@@ -5,9 +5,14 @@ import { listDatasets, previewDataset } from '@/features/datasets/api'
 import { listCharts, createChart, updateChart, deleteChart } from './api'
 import { ChartRenderer } from './ChartRenderer'
 import { ChartTypePicker } from './ChartTypePicker'
-import type { Chart, ChartType, FieldMapping, LegendPosition, VisualConfig } from '@/types/charts'
+import type { Chart, ChartSpec, ChartType, LegendPosition } from '@/types/charts'
 import type { Dataset, ColumnMeta, PreviewResult } from '@/types/datasets'
-import { CHART_TYPE_LABELS, LEGEND_POSITIONS, LEGEND_POSITION_LABELS } from '@/types/charts'
+import {
+  CHART_TYPE_LABELS,
+  LEGEND_POSITIONS,
+  LEGEND_POSITION_LABELS,
+  emptySpec,
+} from '@/types/charts'
 
 // ── Constantes ────────────────────────────────────────────────────────────────
 
@@ -19,6 +24,8 @@ const CHART_TYPES: ChartType[] = [
   'candlestick',
   'boxplot',
   'treemap',
+  'table',
+  'kpi',
 ]
 
 // Zonas de mapeo por tipo de gráfica. `x/y/series` van a fieldX/fieldY/fieldSeries;
@@ -67,6 +74,13 @@ const ZONES_BY_TYPE: Record<ChartType, ZoneDef[]> = {
     { slot: 'field', fieldKey: 'median', label: 'Mediana', single: true, required: true },
     { slot: 'field', fieldKey: 'q3', label: 'Q3', single: true, required: true },
     { slot: 'field', fieldKey: 'max', label: 'Máximo', single: true, required: true },
+  ],
+  table: [
+    { slot: 'x', label: 'Columnas (dimensiones)', hint: 'Una o varias columnas', required: true },
+    { slot: 'y', label: 'Métricas (opcional)', hint: 'Columnas numéricas' },
+  ],
+  kpi: [
+    { slot: 'y', label: 'Métrica', single: true, required: true },
   ],
 }
 
@@ -378,30 +392,36 @@ const BUILDER_DEFAULTS: BuilderState = {
   legendPosition: 'top',
 }
 
-// Acepta field_mapping legacy donde x/y eran string suelto en vez de array.
-function asColumnArray(v: unknown): string[] {
-  if (Array.isArray(v)) return v.filter((x): x is string => typeof x === 'string')
-  if (typeof v === 'string' && v) return [v]
-  return []
-}
-
 function builderFromChart(chart: Chart): BuilderState {
-  const fm = chart.field_mapping
-  const vc = chart.visual_config
+  const spec = chart.chart_spec
   return {
     name: chart.name,
     description: chart.description ?? '',
-    datasetId: chart.dataset_id,
-    chartType: chart.chart_type,
-    fieldX: asColumnArray(fm.x),
-    fieldY: asColumnArray(fm.y),
-    fieldSeries: fm.series ? [fm.series] : [],
-    fields: fm.fields ?? {},
-    title: vc.title ?? '',
-    subtitle: vc.subtitle ?? '',
-    showLegend: vc.show_legend ?? true,
-    legendPosition: vc.legend_position ?? 'top',
+    datasetId: spec.data.dataset_id,
+    chartType: spec.visual.chart_type,
+    fieldX: spec.encodings.x.map((e) => e.field),
+    fieldY: spec.encodings.y.map((e) => e.field),
+    fieldSeries: spec.encodings.color ? [spec.encodings.color.field] : [],
+    fields: spec.encodings.fields ?? {},
+    title: spec.visual.title ?? '',
+    subtitle: spec.visual.subtitle ?? '',
+    showLegend: spec.interactions.legend,
+    legendPosition: spec.style.legend_position,
   }
+}
+
+// Construye la ChartSpec canónica desde el estado del builder visual.
+function specFromState(state: BuilderState): ChartSpec {
+  const spec = emptySpec(state.datasetId, state.chartType)
+  spec.visual.title = state.title || null
+  spec.visual.subtitle = state.subtitle || null
+  spec.encodings.x = state.fieldX.map((field) => ({ field }))
+  spec.encodings.y = state.fieldY.map((field) => ({ field }))
+  spec.encodings.color = state.fieldSeries[0] ? { field: state.fieldSeries[0] } : null
+  spec.encodings.fields = state.fields
+  spec.interactions.legend = state.showLegend
+  spec.style.legend_position = state.legendPosition
+  return spec
 }
 
 function ChartBuilder({
@@ -521,34 +541,18 @@ function ChartBuilder({
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      const fieldMapping: FieldMapping = {
-        x: state.fieldX,
-        y: state.fieldY,
-        series: state.fieldSeries[0] || null,
-        fields: Object.keys(state.fields).length ? state.fields : undefined,
-      }
-      const visualConfig: VisualConfig = {
-        title: state.title || null,
-        subtitle: state.subtitle || null,
-        show_legend: state.showLegend,
-        legend_position: state.legendPosition,
-      }
+      const chartSpec = specFromState(state)
       if (editingChart) {
         return updateChart(editingChart.id, {
           name: state.name,
           description: state.description || null,
-          chart_type: state.chartType,
-          field_mapping: fieldMapping,
-          visual_config: visualConfig,
+          chart_spec: chartSpec,
         })
       }
       return createChart({
-        dataset_id: state.datasetId,
         name: state.name,
         description: state.description || null,
-        chart_type: state.chartType,
-        field_mapping: fieldMapping,
-        visual_config: visualConfig,
+        chart_spec: chartSpec,
       })
     },
     onSuccess: () => {
@@ -558,18 +562,7 @@ function ChartBuilder({
     onError: (err) => setSaveError((err as Error).message),
   })
 
-  const fieldMapping: FieldMapping = {
-    x: state.fieldX,
-    y: state.fieldY,
-    series: state.fieldSeries[0] || undefined,
-    fields: Object.keys(state.fields).length ? state.fields : undefined,
-  }
-  const visualConfig: VisualConfig = {
-    title: state.title || undefined,
-    subtitle: state.subtitle || undefined,
-    show_legend: state.showLegend,
-    legend_position: state.legendPosition,
-  }
+  const currentSpec = specFromState(state)
 
   const referencedCols = zones.flatMap((z) => zoneValues(z))
   const showChart =
@@ -727,12 +720,7 @@ function ChartBuilder({
 
             {!previewError && showChart && (
               <div className="h-full min-h-[300px] rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-                <ChartRenderer
-                  chartType={state.chartType}
-                  fieldMapping={fieldMapping}
-                  visualConfig={visualConfig}
-                  rows={previewData!.rows}
-                />
+                <ChartRenderer spec={currentSpec} rows={previewData!.rows} />
               </div>
             )}
 

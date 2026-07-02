@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import * as echarts from 'echarts'
 import type { ECharts, EChartsOption } from 'echarts'
-import type { ChartType, FieldMapping, LegendPosition, VisualConfig } from '@/types/charts'
+import type { ChartSpec, LegendPosition } from '@/types/charts'
 
 // ── Posición de leyenda → opción ECharts ───────────────────────────────────────
 
@@ -37,35 +37,43 @@ function numericValue(v: unknown): number {
   return typeof v === 'number' ? v : Number(v)
 }
 
-// ── Transformador spec → ECharts option ───────────────────────────────────────
+// ── Transformador ChartSpec → ECharts option (RF-09: exportado para poder
+// mostrar el option generado como referencia técnica en el editor avanzado) ────
 
-function buildOption(
-  chartType: ChartType,
-  fieldMapping: FieldMapping,
-  visualConfig: VisualConfig,
-  rows: Record<string, unknown>[],
-): EChartsOption {
-  const { x, y, series, fields = {} } = fieldMapping
+export function buildOption(spec: ChartSpec, rows: Record<string, unknown>[]): EChartsOption {
+  const chartType = spec.visual.chart_type
+  const x = spec.encodings.x.map((e) => e.field)
+  const y = spec.encodings.y.map((e) => e.field)
+  const series = spec.encodings.color?.field
+  const fields = spec.encodings.fields ?? {}
   const x0 = x[0] ?? ''
   const y0 = y[0] ?? ''
-  const {
-    title,
-    subtitle,
-    show_legend = true,
-    legend_position = 'top',
-  } = visualConfig
+  const title = spec.visual.title ?? ''
+  const subtitle = spec.visual.subtitle ?? ''
+  const showLegend = spec.interactions.legend
+  const showLabels = spec.style.show_labels
+  const horizontal = spec.style.orientation === 'horizontal'
 
   const baseTitle: EChartsOption['title'] = {
-    text: title ?? '',
-    subtext: subtitle ?? '',
+    text: title,
+    subtext: subtitle,
     left: 'left',
     textStyle: { fontSize: 14, fontWeight: 'bold', color: '#1f2937' },
     subtextStyle: { fontSize: 12, color: '#6b7280' },
   }
 
-  const legendOpt: EChartsOption['legend'] = show_legend
-    ? { show: true, ...legendPositionOption(legend_position) }
+  const legendOpt: EChartsOption['legend'] = showLegend
+    ? { show: true, ...legendPositionOption(spec.style.legend_position) }
     : { show: false }
+
+  const tooltipEnabled = spec.interactions.tooltip
+  const extras: Partial<EChartsOption> = {}
+  if (spec.interactions.zoom) {
+    extras.dataZoom = [{ type: 'inside' }]
+  }
+  if (spec.interactions.download) {
+    extras.toolbox = { feature: { saveAsImage: { title: 'Descargar' } } }
+  }
 
   const categoryAxis = {
     type: 'category' as const,
@@ -79,13 +87,14 @@ function buildOption(
     return {
       title: baseTitle,
       legend: legendOpt,
-      tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
+      tooltip: { show: tooltipEnabled, trigger: 'item', formatter: '{b}: {c} ({d}%)' },
+      ...extras,
       series: [
         {
           type: 'pie',
           radius: '65%',
           itemStyle: { borderRadius: 4, borderColor: '#fff', borderWidth: 2 },
-          label: { formatter: '{b}\n{d}%' },
+          label: { show: showLabels || undefined, formatter: '{b}\n{d}%' },
           data: rows.map((r) => ({ name: compositeValue(x, r), value: numericValue(r[y0]) })),
         },
       ],
@@ -96,7 +105,8 @@ function buildOption(
   if (chartType === 'treemap') {
     return {
       title: baseTitle,
-      tooltip: { trigger: 'item', formatter: '{b}: {c}' },
+      tooltip: { show: tooltipEnabled, trigger: 'item', formatter: '{b}: {c}' },
+      ...extras,
       series: [
         {
           type: 'treemap',
@@ -114,7 +124,8 @@ function buildOption(
     return {
       title: baseTitle,
       legend: legendOpt,
-      tooltip: { trigger: 'item' },
+      tooltip: { show: tooltipEnabled, trigger: 'item' },
+      ...extras,
       xAxis: { type: 'value', name: x0 },
       yAxis: { type: 'value', name: y0 },
       series: [
@@ -132,8 +143,9 @@ function buildOption(
     const keys = ['open', 'close', 'lowest', 'highest'] as const
     return {
       title: baseTitle,
-      tooltip: { trigger: 'axis' },
+      tooltip: { show: tooltipEnabled, trigger: 'axis' },
       grid: gridOpt,
+      ...extras,
       xAxis: categoryAxis,
       yAxis: { type: 'value', scale: true },
       series: [
@@ -150,8 +162,9 @@ function buildOption(
     const keys = ['min', 'q1', 'median', 'q3', 'max'] as const
     return {
       title: baseTitle,
-      tooltip: { trigger: 'item' },
+      tooltip: { show: tooltipEnabled, trigger: 'item' },
       grid: gridOpt,
+      ...extras,
       xAxis: categoryAxis,
       yAxis: { type: 'value', scale: true },
       series: [
@@ -166,7 +179,7 @@ function buildOption(
   // ── Barras / Líneas ─────────────────────────────────────────────────────────
   const eType = chartType === 'bar' ? 'bar' : 'line'
 
-  let seriesData: { name: string; type: string; data: unknown[] }[]
+  let seriesData: { name: string; type: string; data: unknown[]; label?: { show: boolean } }[]
   let categoryData: string[]
 
   if (series) {
@@ -197,13 +210,22 @@ function buildOption(
     seriesData = [{ name: y0, type: eType, data: rows.map((r) => r[y0]) }]
   }
 
+  if (showLabels) {
+    seriesData = seriesData.map((s) => ({ ...s, label: { show: true } }))
+  }
+
+  const catAxis = { ...categoryAxis, data: categoryData }
+  const valAxis = { type: 'value' as const }
+
   return {
     title: baseTitle,
     legend: legendOpt,
-    tooltip: { trigger: 'axis' as const },
+    tooltip: { show: tooltipEnabled, trigger: 'axis' as const },
     grid: gridOpt,
-    xAxis: { ...categoryAxis, data: categoryData },
-    yAxis: { type: 'value' as const },
+    ...extras,
+    // Barras horizontales: se intercambian los ejes.
+    xAxis: horizontal && chartType === 'bar' ? valAxis : catAxis,
+    yAxis: horizontal && chartType === 'bar' ? catAxis : valAxis,
     series: seriesData,
   } as EChartsOption
 }
@@ -211,20 +233,12 @@ function buildOption(
 // ── Componente ─────────────────────────────────────────────────────────────────
 
 interface ChartRendererProps {
-  chartType: ChartType
-  fieldMapping: FieldMapping
-  visualConfig: VisualConfig
+  spec: ChartSpec
   rows: Record<string, unknown>[]
   className?: string
 }
 
-export function ChartRenderer({
-  chartType,
-  fieldMapping,
-  visualConfig,
-  rows,
-  className = '',
-}: ChartRendererProps) {
+export function ChartRenderer({ spec, rows, className = '' }: ChartRendererProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const instanceRef = useRef<ECharts | null>(null)
 
@@ -247,9 +261,8 @@ export function ChartRenderer({
   // Actualizar opciones cuando cambian los datos o la configuración
   useEffect(() => {
     if (!instanceRef.current) return
-    const option = buildOption(chartType, fieldMapping, visualConfig, rows)
-    instanceRef.current.setOption(option, true)
-  }, [chartType, fieldMapping, visualConfig, rows])
+    instanceRef.current.setOption(buildOption(spec, rows), true)
+  }, [spec, rows])
 
   return <div ref={containerRef} className={`w-full h-full ${className}`} />
 }
