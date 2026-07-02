@@ -1,7 +1,8 @@
 """Modelo de gráfica: visualización vinculada a un dataset (§6.5).
 
-Una gráfica se guarda como especificación JSON independiente del renderer:
-renderer, chart_type, field_mapping, visual_config.
+Una gráfica se guarda como ChartSpec 1.0 (JSON versionado, independiente del
+renderer). `dataset_id` y `chart_type` son denormalizados desde la spec para
+FKs y listados; el service los mantiene sincronizados.
 """
 
 import uuid
@@ -14,7 +15,7 @@ from app.shared.models import UUIDAuditBase
 
 
 class Chart(UUIDAuditBase, table=True):
-    """Gráfica persistida como spec JSON (renderer echarts + tipo + mapeo de campos)."""
+    """Gráfica persistida como ChartSpec JSON (formato canónico del laboratorio)."""
 
     __tablename__ = "charts"
 
@@ -23,10 +24,5 @@ class Chart(UUIDAuditBase, table=True):
     description: str | None = Field(default=None, max_length=500)
     renderer: str = Field(default="echarts", max_length=20)
     chart_type: str = Field(max_length=40)
-    field_mapping: dict = Field(
-        sa_column=Column(JSONVariant, nullable=False, server_default="{}")
-    )
-    visual_config: dict = Field(
-        sa_column=Column(JSONVariant, nullable=False, server_default="{}")
-    )
+    chart_spec: dict = Field(sa_column=Column(JSONVariant, nullable=False))
     status: str = Field(default="draft", max_length=20)

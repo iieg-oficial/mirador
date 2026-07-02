@@ -1,11 +1,12 @@
-"""Tests de API del módulo charts: CRUD, validación de spec (tipo + mapeo de
-campos contra las columnas del dataset), preview y el gate `require_app_access`.
+"""Tests de API del módulo charts: CRUD sobre ChartSpec, validación contra el
+dataset, preview de gráfica guardada y el gate `require_app_access`.
 
 `_infer_schema` y `run_query` se mockean: requieren una conexión Postgres real,
 fuera de alcance para estos tests (igual que en `test_datasets_api.py`).
 """
 
 import uuid
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -36,20 +37,33 @@ _DATASET_PAYLOAD = {
     "cache_ttl_seconds": 300,
 }
 
-_CHART_PAYLOAD = {
-    "name": "Barras de población",
-    "chart_type": "bar",
-    "field_mapping": {"x": "municipio", "y": "municipio"},
-    "visual_config": {},
-}
-
-
 # Columnas que el dataset de prueba "expone" (superset para cubrir todos los tipos).
 _SCHEMA_COLS = [
-    "municipio", "anio", "fecha",
+    "municipio", "anio", "fecha", "poblacion",
     "open", "close", "lowest", "highest",  # candlestick
     "vmin", "q1", "median", "q3", "vmax",  # boxplot
 ]
+
+
+def _spec(dataset_id: str, **overrides: Any) -> dict:
+    base: dict[str, Any] = {
+        "version": "1.0",
+        "data": {"dataset_id": dataset_id, "filters": [], "sort": [], "limit": 100},
+        "visual": {"chart_type": "bar", "title": "Barras de población"},
+        "encodings": {
+            "x": [{"field": "municipio"}],
+            "y": [{"field": "poblacion", "aggregation": "sum"}],
+        },
+    }
+    base.update(overrides)
+    return base
+
+
+def _chart_payload(dataset_id: str, **spec_overrides: Any) -> dict:
+    return {
+        "name": "Barras de población",
+        "chart_spec": _spec(dataset_id, **spec_overrides),
+    }
 
 
 @pytest.fixture(autouse=True)
@@ -72,21 +86,23 @@ def _create_dataset(client: TestClient) -> str:
 
 def test_create_chart_ok(client: TestClient) -> None:
     dataset_id = _create_dataset(client)
-    res = client.post("/api/admin/charts", json={**_CHART_PAYLOAD, "dataset_id": dataset_id})
+    res = client.post("/api/admin/charts", json=_chart_payload(dataset_id))
     assert res.status_code == 201, res.text
     body = res.json()
     assert body["renderer"] == "echarts"
     assert body["status"] == "draft"
+    # Denormalizados sincronizados desde la spec.
     assert body["chart_type"] == "bar"
+    assert body["dataset_id"] == dataset_id
+    assert body["chart_spec"]["visual"]["chart_type"] == "bar"
 
 
 def test_create_chart_unknown_column_returns_422(client: TestClient) -> None:
     dataset_id = _create_dataset(client)
-    payload = {
-        **_CHART_PAYLOAD,
-        "dataset_id": dataset_id,
-        "field_mapping": {"x": "inexistente", "y": "inexistente"},
-    }
+    payload = _chart_payload(
+        dataset_id,
+        encodings={"x": [{"field": "inexistente"}], "y": [{"field": "poblacion"}]},
+    )
     res = client.post("/api/admin/charts", json=payload)
     assert res.status_code == 422, res.text
     assert "inexistente" in res.text
@@ -94,7 +110,7 @@ def test_create_chart_unknown_column_returns_422(client: TestClient) -> None:
 
 def test_create_chart_bad_type_returns_422(client: TestClient) -> None:
     dataset_id = _create_dataset(client)
-    payload = {**_CHART_PAYLOAD, "dataset_id": dataset_id, "chart_type": "wormhole"}
+    payload = _chart_payload(dataset_id, visual={"chart_type": "wormhole"})
     res = client.post("/api/admin/charts", json=payload)
     assert res.status_code == 422, res.text
 
@@ -103,14 +119,16 @@ def test_create_candlestick_ok(client: TestClient) -> None:
     dataset_id = _create_dataset(client)
     payload = {
         "name": "Velas",
-        "chart_type": "candlestick",
-        "dataset_id": dataset_id,
-        "field_mapping": {
-            "x": ["fecha"],
-            "y": [],
-            "fields": {"open": "open", "close": "close", "lowest": "lowest", "highest": "highest"},
-        },
-        "visual_config": {},
+        "chart_spec": _spec(
+            dataset_id,
+            visual={"chart_type": "candlestick"},
+            encodings={
+                "x": [{"field": "fecha"}],
+                "fields": {
+                    "open": "open", "close": "close", "lowest": "lowest", "highest": "highest",
+                },
+            },
+        ),
     }
     res = client.post("/api/admin/charts", json=payload)
     assert res.status_code == 201, res.text
@@ -120,10 +138,11 @@ def test_create_candlestick_missing_field_returns_422(client: TestClient) -> Non
     dataset_id = _create_dataset(client)
     payload = {
         "name": "Velas incompletas",
-        "chart_type": "candlestick",
-        "dataset_id": dataset_id,
-        "field_mapping": {"x": ["fecha"], "y": [], "fields": {"open": "open", "close": "close"}},
-        "visual_config": {},
+        "chart_spec": _spec(
+            dataset_id,
+            visual={"chart_type": "candlestick"},
+            encodings={"x": [{"field": "fecha"}], "fields": {"open": "open", "close": "close"}},
+        ),
     }
     res = client.post("/api/admin/charts", json=payload)
     assert res.status_code == 422, res.text
@@ -134,41 +153,83 @@ def test_create_boxplot_ok(client: TestClient) -> None:
     dataset_id = _create_dataset(client)
     payload = {
         "name": "Cajas",
-        "chart_type": "boxplot",
-        "dataset_id": dataset_id,
-        "field_mapping": {
-            "x": ["municipio"],
-            "y": [],
-            "fields": {"min": "vmin", "q1": "q1", "median": "median", "q3": "q3", "max": "vmax"},
-        },
-        "visual_config": {},
+        "chart_spec": _spec(
+            dataset_id,
+            visual={"chart_type": "boxplot"},
+            encodings={
+                "x": [{"field": "municipio"}],
+                "fields": {
+                    "min": "vmin", "q1": "q1", "median": "median", "q3": "q3", "max": "vmax",
+                },
+            },
+        ),
     }
     res = client.post("/api/admin/charts", json=payload)
     assert res.status_code == 201, res.text
 
 
+def test_create_kpi_and_table_ok(client: TestClient) -> None:
+    dataset_id = _create_dataset(client)
+    kpi = {
+        "name": "Total poblacional",
+        "chart_spec": _spec(
+            dataset_id,
+            visual={"chart_type": "kpi"},
+            encodings={"y": [{"field": "poblacion", "aggregation": "sum"}]},
+        ),
+    }
+    assert client.post("/api/admin/charts", json=kpi).status_code == 201
+
+    table = {
+        "name": "Tabla de población",
+        "chart_spec": _spec(
+            dataset_id,
+            visual={"chart_type": "table"},
+            encodings={"x": [{"field": "municipio"}], "y": [{"field": "poblacion"}]},
+        ),
+    }
+    assert client.post("/api/admin/charts", json=table).status_code == 201
+
+
 def test_create_chart_missing_dataset_returns_404(client: TestClient) -> None:
-    payload = {**_CHART_PAYLOAD, "dataset_id": str(uuid.uuid4())}
-    res = client.post("/api/admin/charts", json=payload)
+    res = client.post("/api/admin/charts", json=_chart_payload(str(uuid.uuid4())))
     assert res.status_code == 404, res.text
 
 
 def test_update_chart_rejects_unknown_column(client: TestClient) -> None:
     dataset_id = _create_dataset(client)
-    created = client.post(
-        "/api/admin/charts", json={**_CHART_PAYLOAD, "dataset_id": dataset_id}
-    ).json()
+    created = client.post("/api/admin/charts", json=_chart_payload(dataset_id)).json()
     res = client.put(
-        f"/api/admin/charts/{created['id']}", json={"field_mapping": {"x": "otra"}}
+        f"/api/admin/charts/{created['id']}",
+        json={
+            "chart_spec": _spec(
+                dataset_id,
+                encodings={"x": [{"field": "otra"}], "y": [{"field": "poblacion"}]},
+            )
+        },
     )
     assert res.status_code == 422, res.text
 
 
+def test_update_chart_syncs_denormalized_fields(client: TestClient) -> None:
+    dataset_id = _create_dataset(client)
+    created = client.post("/api/admin/charts", json=_chart_payload(dataset_id)).json()
+    res = client.put(
+        f"/api/admin/charts/{created['id']}",
+        json={
+            "name": "Ahora líneas",
+            "chart_spec": _spec(dataset_id, visual={"chart_type": "line"}),
+        },
+    )
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body["name"] == "Ahora líneas"
+    assert body["chart_type"] == "line"
+
+
 def test_list_get_and_delete_chart(client: TestClient) -> None:
     dataset_id = _create_dataset(client)
-    created = client.post(
-        "/api/admin/charts", json={**_CHART_PAYLOAD, "dataset_id": dataset_id}
-    ).json()
+    created = client.post("/api/admin/charts", json=_chart_payload(dataset_id)).json()
 
     assert client.get(f"/api/admin/charts/{created['id']}").status_code == 200
     assert len(client.get("/api/admin/charts").json()) == 1
@@ -180,9 +241,7 @@ def test_list_get_and_delete_chart(client: TestClient) -> None:
 
 def test_preview_chart(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     dataset_id = _create_dataset(client)
-    created = client.post(
-        "/api/admin/charts", json={**_CHART_PAYLOAD, "dataset_id": dataset_id}
-    ).json()
+    created = client.post("/api/admin/charts", json=_chart_payload(dataset_id)).json()
 
     def fake_run_query(connection, sql, params, max_rows, **kwargs):  # type: ignore[no-untyped-def]
         return PreviewResult(
@@ -197,7 +256,10 @@ def test_preview_chart(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> N
 
     res = client.post(f"/api/admin/charts/{created['id']}/preview")
     assert res.status_code == 200, res.text
-    assert res.json()["rows"] == [{"municipio": "Guadalajara"}]
+    body = res.json()
+    assert body["rows"] == [{"municipio": "Guadalajara"}]
+    # El preview de una gráfica guardada también expone el SQL generado.
+    assert "GROUP BY" in body["generated_sql"]
 
 
 def test_admin_endpoint_requires_tablerillos_role(client: TestClient) -> None:

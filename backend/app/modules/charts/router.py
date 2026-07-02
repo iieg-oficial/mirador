@@ -22,8 +22,6 @@ from app.modules.charts.schemas import (
 from app.modules.charts.spec import ChartSpecValidation
 from app.modules.connections import service as conn_service
 from app.modules.datasets import service as dataset_service
-from app.modules.datasets.schemas import PreviewResult
-
 router = APIRouter()
 log = logging.getLogger(__name__)
 
@@ -97,7 +95,7 @@ def create_chart(
     session: Session = Depends(get_session),
     user: CurrentUser = Depends(require_permission("tablerillos.charts.create")),
 ) -> Chart:
-    dataset = dataset_service.get_dataset(session, data.dataset_id)
+    dataset = dataset_service.get_dataset(session, data.chart_spec.data.dataset_id)
     if dataset is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dataset no encontrado")
     try:
@@ -123,7 +121,11 @@ def update_chart(
     _: CurrentUser = Depends(require_permission("tablerillos.charts.update")),
 ) -> Chart:
     obj = _get_or_404(session, chart_id)
-    dataset = dataset_service.get_dataset(session, obj.dataset_id)
+    # Si la spec cambia puede apuntar a otro dataset; se valida contra ese.
+    target_dataset_id = (
+        data.chart_spec.data.dataset_id if data.chart_spec is not None else obj.dataset_id
+    )
+    dataset = dataset_service.get_dataset(session, target_dataset_id)
     if dataset is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dataset no encontrado")
     try:
@@ -144,13 +146,13 @@ def delete_chart(
 # ── Preview ───────────────────────────────────────────────────────────────────
 
 
-@router.post("/{chart_id}/preview", response_model=PreviewResult)
+@router.post("/{chart_id}/preview", response_model=ChartPreviewResult)
 def preview_chart(
     chart_id: uuid.UUID,
     session: Session = Depends(get_session),
     _: CurrentUser = Depends(require_permission("tablerillos.charts.view")),
-) -> PreviewResult:
-    """Ejecuta el dataset de la gráfica y devuelve datos para renderizar en el cliente."""
+) -> ChartPreviewResult:
+    """Ejecuta la consulta generada desde la spec guardada de la gráfica."""
     chart = _get_or_404(session, chart_id)
 
     dataset = dataset_service.get_dataset(session, chart.dataset_id)
@@ -162,7 +164,7 @@ def preview_chart(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conexión no encontrada")
 
     try:
-        return service.preview_chart(connection, dataset)
+        return service.preview_chart(connection, dataset, chart)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
     except Exception as exc:
