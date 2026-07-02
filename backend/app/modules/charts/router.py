@@ -3,14 +3,14 @@
 import logging
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlmodel import Session
 
 from app.core.database import get_session
 from app.modules.auth.deps import require_permission
 from app.modules.auth.models import CurrentUser
 from app.modules.charts import service
-from app.modules.charts.models import Chart, ChartVersion
+from app.modules.charts.models import Chart, ChartStatus, ChartVersion
 from app.modules.charts.schemas import (
     ChartCreate,
     ChartPreviewResult,
@@ -84,10 +84,12 @@ def preview_chart_spec(
 
 @router.get("", response_model=list[ChartRead])
 def list_charts(
+    status_filter: ChartStatus | None = Query(default=None, alias="status"),
     session: Session = Depends(get_session),
     _: CurrentUser = Depends(require_permission("tablerillos.charts.view")),
 ) -> list[Chart]:
-    return service.list_charts(session)
+    """Sin filtro excluye archivadas; con ?status= devuelve solo ese estado."""
+    return service.list_charts(session, status_filter)
 
 
 @router.post("", response_model=ChartRead, status_code=status.HTTP_201_CREATED)

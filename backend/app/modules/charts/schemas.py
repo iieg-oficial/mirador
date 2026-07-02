@@ -6,6 +6,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from app.modules.charts.models import ChartStatus
 from app.modules.charts.spec import ChartSpec
 from app.modules.datasets.schemas import PreviewResult
 
@@ -46,8 +47,8 @@ class ChartUpdate(BaseModel):
     chart_spec: ChartSpec | None = None
     # Comentario opcional que queda registrado en la versión (RF-12).
     change_comment: str | None = Field(default=None, max_length=500)
-    # `status` no se expone aquí: no hay flujo de publicación de gráficas todavía.
-    # La máquina de estados llegará con la fase de dashboards.
+    # Estado editable (RF-10): borrador / en revisión / aprobada / archivada.
+    status: ChartStatus | None = None
 
 
 class ChartVersionRead(BaseModel):

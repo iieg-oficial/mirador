@@ -11,7 +11,7 @@ import uuid
 from sqlmodel import Session, col, select
 
 from app.modules.auth.models import CurrentUser
-from app.modules.charts.models import Chart, ChartVersion
+from app.modules.charts.models import Chart, ChartStatus, ChartVersion
 from app.modules.charts.query_builder import build_query
 from app.modules.charts.schemas import ChartCreate, ChartPreviewResult, ChartUpdate
 from app.modules.connections.models import Connection
@@ -34,10 +34,14 @@ def _assert_spec_ok(spec: ChartSpec, dataset: Dataset) -> None:
         raise ValueError(" | ".join(errors))
 
 
-def list_charts(session: Session) -> list[Chart]:
-    return list(
-        session.exec(select(Chart).where(Chart.status != "archived")).all()
-    )
+def list_charts(session: Session, status: ChartStatus | None = None) -> list[Chart]:
+    """Lista gráficas; sin filtro excluye archivadas, con filtro devuelve solo ese estado."""
+    query = select(Chart)
+    if status is not None:
+        query = query.where(Chart.status == status.value)
+    else:
+        query = query.where(Chart.status != ChartStatus.archived.value)
+    return list(session.exec(query).all())
 
 
 def get_chart(session: Session, chart_id: uuid.UUID) -> Chart | None:
@@ -103,6 +107,8 @@ def update_chart(
         obj.dataset_id = data.chart_spec.data.dataset_id
         obj.chart_type = data.chart_spec.visual.chart_type
     fields = data.model_dump(exclude_unset=True, exclude={"chart_spec", "change_comment"})
+    if isinstance(fields.get("status"), ChartStatus):
+        fields["status"] = fields["status"].value
     for key, value in fields.items():
         setattr(obj, key, value)
     session.add(obj)
@@ -171,7 +177,7 @@ def clone_chart(session: Session, obj: Chart, user: CurrentUser) -> Chart:
 
 
 def delete_chart(session: Session, obj: Chart) -> None:
-    obj.status = "archived"
+    obj.status = ChartStatus.archived.value
     session.add(obj)
     session.commit()
 

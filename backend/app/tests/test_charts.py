@@ -267,3 +267,32 @@ def test_admin_endpoint_requires_tablerillos_role(client: TestClient) -> None:
     fastapi_app.dependency_overrides[get_current_user] = lambda: CurrentUser(sub="sin-rol", roles=[])
     res = client.get("/api/admin/charts")
     assert res.status_code == 403, res.text
+
+
+# ── Estados (RF-10) ───────────────────────────────────────────────────────────
+
+
+def test_update_status_and_filter(client: TestClient) -> None:
+    dataset_id = _create_dataset(client)
+    created = client.post("/api/admin/charts", json=_chart_payload(dataset_id)).json()
+
+    res = client.put(f"/api/admin/charts/{created['id']}", json={"status": "in_review"})
+    assert res.status_code == 200, res.text
+    assert res.json()["status"] == "in_review"
+
+    # Filtro por estado.
+    assert len(client.get("/api/admin/charts?status=in_review").json()) == 1
+    assert client.get("/api/admin/charts?status=approved").json() == []
+
+    # Estado inválido → 422 del enum.
+    res = client.put(f"/api/admin/charts/{created['id']}", json={"status": "publicada"})
+    assert res.status_code == 422
+
+
+def test_archived_only_visible_with_filter(client: TestClient) -> None:
+    dataset_id = _create_dataset(client)
+    created = client.post("/api/admin/charts", json=_chart_payload(dataset_id)).json()
+    client.delete(f"/api/admin/charts/{created['id']}")
+
+    assert client.get("/api/admin/charts").json() == []
+    assert len(client.get("/api/admin/charts?status=archived").json()) == 1

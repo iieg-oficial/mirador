@@ -6,12 +6,23 @@ FKs y listados; el service los mantiene sincronizados.
 """
 
 import uuid
+from enum import Enum
 
 from sqlalchemy import Column, UniqueConstraint
 from sqlmodel import Field
 
 from app.core.db_types import JSONVariant
 from app.shared.models import UUIDAuditBase
+
+
+class ChartStatus(str, Enum):
+    """Estados de una gráfica (RF-10). Transición libre en el laboratorio
+    interno; no hay workflow de aprobación formal todavía."""
+
+    draft = "draft"
+    in_review = "in_review"
+    approved = "approved"
+    archived = "archived"
 
 
 class Chart(UUIDAuditBase, table=True):
