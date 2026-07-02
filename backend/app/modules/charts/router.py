@@ -71,6 +71,8 @@ def preview_chart_spec(
         return service.preview_spec(connection, dataset, spec, payload.params, warnings)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+    except HTTPException:
+        raise
     except Exception as exc:
         log.exception("Error al ejecutar la consulta generada desde la ChartSpec")
         raise HTTPException(
@@ -215,6 +217,8 @@ def preview_chart(
         return service.preview_chart(connection, dataset, chart)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+    except HTTPException:
+        raise
     except Exception as exc:
         log.exception("Error al ejecutar el dataset de la gráfica")
         raise HTTPException(

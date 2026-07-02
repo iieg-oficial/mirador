@@ -13,6 +13,7 @@ import uuid
 from typing import Any
 
 import psycopg
+from fastapi import HTTPException, status
 from sqlmodel import Session, select
 
 from app.core.cache import get_cached, invalidate, set_cached
@@ -174,6 +175,26 @@ def delete_dataset(session: Session, obj: Dataset) -> None:
 # ── Validación activa ─────────────────────────────────────────────────────────
 
 
+def _connect(conninfo: str) -> psycopg.Connection:  # type: ignore[type-arg]
+    """Abre la conexión a la BD externa; si no está disponible responde 503.
+
+    Punto único por donde pasan preview, playground, validación y gráficas.
+    Solo envuelve el connect: un timeout de consulta (QueryCanceled, también
+    OperationalError) ocurre en execute() y sigue cayendo en los 502 de los
+    routers.
+    """
+    try:
+        return psycopg.connect(conninfo)
+    except psycopg.OperationalError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                "No se pudo conectar a la base de datos externa. "
+                "Verifica la conexión o inténtalo más tarde."
+            ),
+        ) from exc
+
+
 def _infer_schema(connection: Connection, sql: str) -> tuple[list[dict[str, str]], list[str]]:
     """Ejecuta `sql` con LIMIT 0 contra la BD real e infiere columnas y parámetros.
 
@@ -186,7 +207,7 @@ def _infer_schema(connection: Connection, sql: str) -> tuple[list[dict[str, str]
     psycopg_sql = _named_to_psycopg(normalize_sql(sql))
     limited = f"SELECT * FROM ({psycopg_sql}) AS _v LIMIT 0"
 
-    with psycopg.connect(_make_conninfo(connection)) as conn:
+    with _connect(_make_conninfo(connection)) as conn:
         conn.read_only = True
         with conn.cursor() as cur:
             cur.execute(f"SET statement_timeout = {_DEFAULT_STATEMENT_TIMEOUT_MS}")
@@ -258,7 +279,7 @@ def run_query(
     conninfo = _make_conninfo(connection)
     t0 = time.monotonic()
 
-    with psycopg.connect(conninfo) as conn:
+    with _connect(conninfo) as conn:
         conn.read_only = True
         with conn.cursor() as cur:
             cur.execute(f"SET statement_timeout = {timeout_ms}")

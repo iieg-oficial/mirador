@@ -70,6 +70,8 @@ def create_dataset(
             status_code=status.HTTP_409_CONFLICT,
             detail="Ya existe un dataset con ese slug.",
         ) from exc
+    except HTTPException:
+        raise
     except Exception as exc:
         log.exception("Error al validar el dataset contra la BD externa")
         raise HTTPException(
@@ -100,6 +102,8 @@ def update_dataset(
         return service.update_dataset(session, obj, data, connection)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+    except HTTPException:
+        raise
     except Exception as exc:
         log.exception("Error al validar el dataset contra la BD externa")
         raise HTTPException(
@@ -133,6 +137,8 @@ def validate_dataset(
         return service.validate_dataset(session, obj, connection)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+    except HTTPException:
+        raise
     except Exception as exc:
         log.exception("Error al validar el dataset contra la BD externa")
         raise HTTPException(
@@ -161,6 +167,8 @@ def preview_dataset(
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+    except HTTPException:
+        raise
     except Exception as exc:
         log.exception("Error al ejecutar el dataset contra la BD externa")
         raise HTTPException(
@@ -184,6 +192,8 @@ def playground(
         return service.run_query(connection, body.sql, body.params, body.max_rows)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+    except HTTPException:
+        raise
     except Exception as exc:
         log.exception("Error al ejecutar la consulta del playground")
         raise HTTPException(

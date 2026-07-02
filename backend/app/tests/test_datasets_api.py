@@ -5,6 +5,7 @@ de slug duplicado (#5) y normalización de ';' final (#4).
 alcance para estos tests (sin BD externa disponible).
 """
 
+import psycopg
 import pytest
 from fastapi.testclient import TestClient
 
@@ -100,6 +101,46 @@ def test_archived_dataset_releases_slug(client: TestClient) -> None:
 
     second = client.post("/api/admin/datasets", json=payload)
     assert second.status_code == 201, second.text
+
+
+def _patch_db_down(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Simula BD externa inaccesible: psycopg.connect lanza OperationalError."""
+
+    def refuse(*args: object, **kwargs: object) -> None:
+        raise psycopg.OperationalError("connection refused")
+
+    monkeypatch.setattr(datasets_service, "_make_conninfo", lambda c: "fake")
+    monkeypatch.setattr(datasets_service.psycopg, "connect", refuse)
+
+
+def test_preview_returns_503_when_external_db_down(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    connection_id = _create_connection(client)
+    created = client.post(
+        "/api/admin/datasets", json={**_DATASET_PAYLOAD, "connection_id": connection_id}
+    ).json()
+
+    _patch_db_down(monkeypatch)
+    res = client.post(
+        f"/api/admin/datasets/{created['id']}/preview", json={"params": {"anio": 2024}}
+    )
+    assert res.status_code == 503, res.text
+    assert "No se pudo conectar" in res.json()["detail"]
+
+
+def test_playground_returns_503_when_external_db_down(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    connection_id = _create_connection(client)
+    _patch_db_down(monkeypatch)
+
+    res = client.post(
+        "/api/admin/datasets/playground",
+        json={"connection_id": connection_id, "sql": "SELECT 1 AS x", "params": {}, "max_rows": 10},
+    )
+    assert res.status_code == 503, res.text
+    assert "No se pudo conectar" in res.json()["detail"]
 
 
 def test_update_dataset_ignores_connection_id_and_slug(client: TestClient) -> None:
