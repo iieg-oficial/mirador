@@ -16,6 +16,8 @@ import type { ChartPreviewResult } from './api'
 import { ChartRenderer } from './ChartRenderer'
 import { ChartTypePicker } from './ChartTypePicker'
 import { SpecEditor } from './SpecEditor'
+import { draftToFilter, filterToDraft } from './filters'
+import type { FilterDraft } from './filters'
 import type {
   Aggregation,
   Chart,
@@ -443,14 +445,6 @@ function ChartCard({
 
 // ── Builder (nueva gráfica / editar) ─────────────────────────────────────────
 
-// Filtro en edición: el valor se captura como texto y se convierte al armar
-// la spec (listas separadas por coma para in/not_in/between).
-interface FilterDraft {
-  field: string
-  operator: FilterOperator
-  value: string
-}
-
 interface BuilderState {
   name: string
   description: string
@@ -509,11 +503,7 @@ function stateFromSpec(spec: ChartSpec, name: string, description: string): Buil
     fieldSeries: spec.encodings.color ? [spec.encodings.color.field] : [],
     fields: spec.encodings.fields ?? {},
     aggregations,
-    filters: spec.data.filters.map((f) => ({
-      field: f.field,
-      operator: f.operator,
-      value: Array.isArray(f.value) ? f.value.join(', ') : String(f.value ?? ''),
-    })),
+    filters: spec.data.filters.map(filterToDraft),
     sortField: spec.data.sort[0]?.field ?? '',
     sortDirection: spec.data.sort[0]?.direction ?? 'asc',
     limit: spec.data.limit,
@@ -526,22 +516,6 @@ function stateFromSpec(spec: ChartSpec, name: string, description: string): Buil
 
 function builderFromChart(chart: Chart): BuilderState {
   return stateFromSpec(chart.chart_spec, chart.name, chart.description ?? '')
-}
-
-// Convierte el valor de texto de un filtro al tipo que espera el backend.
-function filterValue(draft: FilterDraft, columns: ColumnMeta[]): unknown {
-  if (draft.operator === 'is_null' || draft.operator === 'is_not_null') return undefined
-  const col = columns.find((c) => c.name === draft.field)
-  const numeric = col?.is_metric || col?.semantic_type === 'metrica'
-  const scalar = (s: string): unknown => {
-    const t = s.trim()
-    if (numeric && t !== '' && !Number.isNaN(Number(t))) return Number(t)
-    return t
-  }
-  if (draft.operator === 'in' || draft.operator === 'not_in' || draft.operator === 'between') {
-    return draft.value.split(',').map((s) => scalar(s))
-  }
-  return scalar(draft.value)
 }
 
 // Construye la ChartSpec canónica desde el estado del builder visual.
@@ -558,7 +532,7 @@ function specFromState(state: BuilderState, columns: ColumnMeta[]): ChartSpec {
   spec.encodings.fields = state.fields
   spec.data.filters = state.filters
     .filter((f) => f.field)
-    .map((f) => ({ field: f.field, operator: f.operator, value: filterValue(f, columns) }))
+    .map((f) => draftToFilter(f, columns))
   spec.data.sort = state.sortField
     ? [{ field: state.sortField, direction: state.sortDirection }]
     : []
