@@ -1,14 +1,25 @@
 import { useState, useCallback, useEffect } from 'react'
 import type { DragEvent } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { listDatasets, previewDataset } from '@/features/datasets/api'
-import { listCharts, createChart, updateChart, deleteChart } from './api'
+import { listDatasets } from '@/features/datasets/api'
+import { listCharts, createChart, updateChart, deleteChart, previewSpec } from './api'
+import type { ChartPreviewResult } from './api'
 import { ChartRenderer } from './ChartRenderer'
 import { ChartTypePicker } from './ChartTypePicker'
-import type { Chart, ChartSpec, ChartType, LegendPosition } from '@/types/charts'
-import type { Dataset, ColumnMeta, PreviewResult } from '@/types/datasets'
+import type {
+  Aggregation,
+  Chart,
+  ChartSpec,
+  ChartType,
+  FilterOperator,
+  LegendPosition,
+} from '@/types/charts'
+import type { Dataset, ColumnMeta, SemanticType } from '@/types/datasets'
+import { SEMANTIC_TYPE_LABELS } from '@/types/datasets'
 import {
+  AGGREGATION_LABELS,
   CHART_TYPE_LABELS,
+  FILTER_OPERATOR_LABELS,
   LEGEND_POSITIONS,
   LEGEND_POSITION_LABELS,
   emptySpec,
@@ -158,6 +169,17 @@ type FieldZone = 'x' | 'y' | 'series'
 
 const COLUMN_DRAG_TYPE = 'application/x-tablerillos-column'
 
+// Icono/color por tipo semántico: # métrica, A dimensión, ⏱ temporal, etc.
+const SEMANTIC_BADGE: Record<SemanticType, { icon: string; className: string }> = {
+  metrica: { icon: '#', className: 'bg-emerald-50 text-emerald-600' },
+  categorica: { icon: 'A', className: 'bg-sky-50 text-sky-600' },
+  temporal: { icon: '◷', className: 'bg-amber-50 text-amber-600' },
+  geografica: { icon: '⌖', className: 'bg-purple-50 text-purple-600' },
+  identificador: { icon: 'ID', className: 'bg-gray-100 text-gray-500' },
+  texto: { icon: 'T', className: 'bg-sky-50 text-sky-600' },
+  booleano: { icon: '✓', className: 'bg-rose-50 text-rose-600' },
+}
+
 function SchemaColumnChip({
   column,
   onQuickAdd,
@@ -165,6 +187,7 @@ function SchemaColumnChip({
   column: ColumnMeta
   onQuickAdd: (zone: FieldZone) => void
 }) {
+  const badge = column.semantic_type ? SEMANTIC_BADGE[column.semantic_type] : null
   return (
     <div
       draggable
@@ -172,11 +195,25 @@ function SchemaColumnChip({
         e.dataTransfer.setData(COLUMN_DRAG_TYPE, column.name)
         e.dataTransfer.effectAllowed = 'copy'
       }}
+      title={
+        column.semantic_type
+          ? `${SEMANTIC_TYPE_LABELS[column.semantic_type]} · ${column.data_type}`
+          : column.data_type
+      }
       className="group flex cursor-grab items-center justify-between gap-1 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs active:cursor-grabbing hover:border-iieg-300"
     >
-      <span className="truncate">
-        <span className="font-medium text-gray-700">{column.name}</span>
-        <span className="ml-1 text-[10px] text-gray-400">{column.data_type}</span>
+      <span className="flex min-w-0 items-center gap-1.5">
+        {badge && (
+          <span
+            className={`flex h-4 min-w-4 flex-shrink-0 items-center justify-center rounded px-0.5 text-[9px] font-bold ${badge.className}`}
+          >
+            {badge.icon}
+          </span>
+        )}
+        <span className="truncate">
+          <span className="font-medium text-gray-700">{column.label || column.name}</span>
+          <span className="ml-1 text-[10px] text-gray-400">{column.data_type}</span>
+        </span>
       </span>
       <span className="hidden flex-shrink-0 gap-0.5 group-hover:flex">
         <button
@@ -362,6 +399,14 @@ function ChartCard({
 
 // ── Builder (nueva gráfica / editar) ─────────────────────────────────────────
 
+// Filtro en edición: el valor se captura como texto y se convierte al armar
+// la spec (listas separadas por coma para in/not_in/between).
+interface FilterDraft {
+  field: string
+  operator: FilterOperator
+  value: string
+}
+
 interface BuilderState {
   name: string
   description: string
@@ -371,6 +416,11 @@ interface BuilderState {
   fieldY: string[]
   fieldSeries: string[]
   fields: Record<string, string>
+  aggregations: Record<string, Aggregation | ''>
+  filters: FilterDraft[]
+  sortField: string
+  sortDirection: 'asc' | 'desc'
+  limit: number
   title: string
   subtitle: string
   showLegend: boolean
@@ -386,6 +436,11 @@ const BUILDER_DEFAULTS: BuilderState = {
   fieldY: [],
   fieldSeries: [],
   fields: {},
+  aggregations: {},
+  filters: [],
+  sortField: '',
+  sortDirection: 'asc',
+  limit: 1000,
   title: '',
   subtitle: '',
   showLegend: true,
@@ -394,6 +449,10 @@ const BUILDER_DEFAULTS: BuilderState = {
 
 function builderFromChart(chart: Chart): BuilderState {
   const spec = chart.chart_spec
+  const aggregations: Record<string, Aggregation | ''> = {}
+  for (const e of spec.encodings.y) {
+    if (e.aggregation) aggregations[e.field] = e.aggregation
+  }
   return {
     name: chart.name,
     description: chart.description ?? '',
@@ -403,6 +462,15 @@ function builderFromChart(chart: Chart): BuilderState {
     fieldY: spec.encodings.y.map((e) => e.field),
     fieldSeries: spec.encodings.color ? [spec.encodings.color.field] : [],
     fields: spec.encodings.fields ?? {},
+    aggregations,
+    filters: spec.data.filters.map((f) => ({
+      field: f.field,
+      operator: f.operator,
+      value: Array.isArray(f.value) ? f.value.join(', ') : String(f.value ?? ''),
+    })),
+    sortField: spec.data.sort[0]?.field ?? '',
+    sortDirection: spec.data.sort[0]?.direction ?? 'asc',
+    limit: spec.data.limit,
     title: spec.visual.title ?? '',
     subtitle: spec.visual.subtitle ?? '',
     showLegend: spec.interactions.legend,
@@ -410,15 +478,41 @@ function builderFromChart(chart: Chart): BuilderState {
   }
 }
 
+// Convierte el valor de texto de un filtro al tipo que espera el backend.
+function filterValue(draft: FilterDraft, columns: ColumnMeta[]): unknown {
+  if (draft.operator === 'is_null' || draft.operator === 'is_not_null') return undefined
+  const col = columns.find((c) => c.name === draft.field)
+  const numeric = col?.is_metric || col?.semantic_type === 'metrica'
+  const scalar = (s: string): unknown => {
+    const t = s.trim()
+    if (numeric && t !== '' && !Number.isNaN(Number(t))) return Number(t)
+    return t
+  }
+  if (draft.operator === 'in' || draft.operator === 'not_in' || draft.operator === 'between') {
+    return draft.value.split(',').map((s) => scalar(s))
+  }
+  return scalar(draft.value)
+}
+
 // Construye la ChartSpec canónica desde el estado del builder visual.
-function specFromState(state: BuilderState): ChartSpec {
+function specFromState(state: BuilderState, columns: ColumnMeta[]): ChartSpec {
   const spec = emptySpec(state.datasetId, state.chartType)
   spec.visual.title = state.title || null
   spec.visual.subtitle = state.subtitle || null
   spec.encodings.x = state.fieldX.map((field) => ({ field }))
-  spec.encodings.y = state.fieldY.map((field) => ({ field }))
+  spec.encodings.y = state.fieldY.map((field) => ({
+    field,
+    aggregation: state.aggregations[field] || null,
+  }))
   spec.encodings.color = state.fieldSeries[0] ? { field: state.fieldSeries[0] } : null
   spec.encodings.fields = state.fields
+  spec.data.filters = state.filters
+    .filter((f) => f.field)
+    .map((f) => ({ field: f.field, operator: f.operator, value: filterValue(f, columns) }))
+  spec.data.sort = state.sortField
+    ? [{ field: state.sortField, direction: state.sortDirection }]
+    : []
+  spec.data.limit = state.limit
   spec.interactions.legend = state.showLegend
   spec.style.legend_position = state.legendPosition
   return spec
@@ -443,7 +537,7 @@ function ChartBuilder({
       ? builderFromChart(editingChart)
       : { ...BUILDER_DEFAULTS, chartType: initialChartType },
   )
-  const [previewData, setPreviewData] = useState<PreviewResult | null>(null)
+  const [previewData, setPreviewData] = useState<ChartPreviewResult | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
   const [previewError, setPreviewError] = useState<string | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -517,12 +611,14 @@ function ChartBuilder({
     set(key, [...state[key], column])
   }
 
+  // Preview por spec: el backend genera la consulta segura (agregación,
+  // filtros y orden server-side) y devuelve solo las filas necesarias.
   async function runPreview() {
-    if (!state.datasetId) return
+    if (!state.datasetId || !requiredFilled) return
     setPreviewLoading(true)
     setPreviewError(null)
     try {
-      const result = await previewDataset(state.datasetId)
+      const result = await previewSpec(specFromState(state, schemaColumns))
       setPreviewData(result)
     } catch (err) {
       setPreviewError((err as Error).message)
@@ -541,7 +637,7 @@ function ChartBuilder({
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      const chartSpec = specFromState(state)
+      const chartSpec = specFromState(state, schemaColumns)
       if (editingChart) {
         return updateChart(editingChart.id, {
           name: state.name,
@@ -562,7 +658,7 @@ function ChartBuilder({
     onError: (err) => setSaveError((err as Error).message),
   })
 
-  const currentSpec = specFromState(state)
+  const currentSpec = specFromState(state, schemaColumns)
 
   const referencedCols = zones.flatMap((z) => zoneValues(z))
   const showChart =
@@ -806,6 +902,155 @@ function ChartBuilder({
               options={LEGEND_POSITIONS.map((p) => ({ value: p, label: LEGEND_POSITION_LABELS[p] }))}
             />
           )}
+
+          {/* Agregaciones por métrica (según la metadata semántica del dataset) */}
+          {state.fieldY.length > 0 && (
+            <div className="space-y-2 border-t border-gray-100 pt-4">
+              <p className="text-xs font-bold uppercase tracking-wider text-gray-400">
+                Agregaciones
+              </p>
+              {state.fieldY.map((field) => {
+                const col = schemaColumns.find((c) => c.name === field)
+                const allowed = (col?.aggregations ??
+                  Object.keys(AGGREGATION_LABELS)) as Aggregation[]
+                return (
+                  <Select
+                    key={field}
+                    label={field}
+                    value={state.aggregations[field] ?? ''}
+                    onChange={(v) =>
+                      setState((prev) => ({
+                        ...prev,
+                        aggregations: { ...prev.aggregations, [field]: v as Aggregation | '' },
+                      }))
+                    }
+                    placeholder="Sin agregar"
+                    options={allowed.map((a) => ({ value: a, label: AGGREGATION_LABELS[a] }))}
+                  />
+                )
+              })}
+            </div>
+          )}
+
+          {/* Filtros */}
+          <div className="space-y-2 border-t border-gray-100 pt-4">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-bold uppercase tracking-wider text-gray-400">Filtros</p>
+              <button
+                type="button"
+                onClick={() =>
+                  setState((prev) => ({
+                    ...prev,
+                    filters: [...prev.filters, { field: '', operator: '=', value: '' }],
+                  }))
+                }
+                className="rounded px-1.5 py-0.5 text-xs font-semibold text-iieg-600 hover:bg-iieg-50"
+              >
+                + Agregar
+              </button>
+            </div>
+            {state.filters.map((f, i) => {
+              const setFilter = (patch: Partial<FilterDraft>) =>
+                setState((prev) => ({
+                  ...prev,
+                  filters: prev.filters.map((ff, j) => (j === i ? { ...ff, ...patch } : ff)),
+                }))
+              const noValue = f.operator === 'is_null' || f.operator === 'is_not_null'
+              const listValue =
+                f.operator === 'in' || f.operator === 'not_in' || f.operator === 'between'
+              return (
+                <div key={i} className="space-y-1 rounded-lg border border-gray-100 p-2">
+                  <div className="flex items-center gap-1">
+                    <select
+                      value={f.field}
+                      onChange={(e) => setFilter({ field: e.target.value })}
+                      className="min-w-0 flex-1 rounded border border-gray-200 px-1.5 py-1 text-xs"
+                    >
+                      <option value="">Campo…</option>
+                      {schemaColumns.map((c) => (
+                        <option key={c.name} value={c.name}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setState((prev) => ({
+                          ...prev,
+                          filters: prev.filters.filter((_, j) => j !== i),
+                        }))
+                      }
+                      className="flex-shrink-0 rounded px-1 text-gray-400 hover:text-red-600"
+                    >
+                      ×
+                    </button>
+                  </div>
+                  <select
+                    value={f.operator}
+                    onChange={(e) => setFilter({ operator: e.target.value as FilterOperator })}
+                    className="w-full rounded border border-gray-200 px-1.5 py-1 text-xs"
+                  >
+                    {(Object.keys(FILTER_OPERATOR_LABELS) as FilterOperator[]).map((op) => (
+                      <option key={op} value={op}>
+                        {FILTER_OPERATOR_LABELS[op]}
+                      </option>
+                    ))}
+                  </select>
+                  {!noValue && (
+                    <input
+                      type="text"
+                      value={f.value}
+                      onChange={(e) => setFilter({ value: e.target.value })}
+                      placeholder={listValue ? 'Valores separados por coma' : 'Valor'}
+                      className="w-full rounded border border-gray-200 px-1.5 py-1 text-xs"
+                    />
+                  )}
+                </div>
+              )
+            })}
+          </div>
+
+          {/* Orden y límite */}
+          <div className="space-y-3 border-t border-gray-100 pt-4">
+            <p className="text-xs font-bold uppercase tracking-wider text-gray-400">
+              Orden y límite
+            </p>
+            <div className="flex items-end gap-1.5">
+              <div className="min-w-0 flex-1">
+                <Select
+                  label="Ordenar por"
+                  value={state.sortField}
+                  onChange={(v) => set('sortField', v)}
+                  placeholder="Sin orden"
+                  options={schemaColumns.map((c) => ({ value: c.name, label: c.name }))}
+                />
+              </div>
+              {state.sortField && (
+                <button
+                  type="button"
+                  title={state.sortDirection === 'asc' ? 'Ascendente' : 'Descendente'}
+                  onClick={() =>
+                    set('sortDirection', state.sortDirection === 'asc' ? 'desc' : 'asc')
+                  }
+                  className="rounded-lg border border-gray-200 px-2.5 py-2 text-sm text-gray-600 hover:bg-gray-50"
+                >
+                  {state.sortDirection === 'asc' ? '↑' : '↓'}
+                </button>
+              )}
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold text-gray-600">Límite de filas</label>
+              <input
+                type="number"
+                min={1}
+                max={50000}
+                value={state.limit}
+                onChange={(e) => set('limit', Math.max(1, Number(e.target.value) || 1))}
+                className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-iieg-400 focus:outline-none"
+              />
+            </div>
+          </div>
         </div>
       </div>
 

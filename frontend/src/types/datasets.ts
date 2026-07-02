@@ -1,8 +1,33 @@
 export type DatasetStatus = 'draft' | 'validated' | 'published' | 'archived'
 
+// Tipo semántico inferido por el backend (editable a mano vía DatasetUpdate).
+export type SemanticType =
+  | 'categorica'
+  | 'metrica'
+  | 'temporal'
+  | 'geografica'
+  | 'identificador'
+  | 'texto'
+  | 'booleano'
+
+export const SEMANTIC_TYPE_LABELS: Record<SemanticType, string> = {
+  categorica: 'Dimensión categórica',
+  metrica: 'Métrica numérica',
+  temporal: 'Campo temporal',
+  geografica: 'Campo geográfico',
+  identificador: 'Identificador',
+  texto: 'Texto descriptivo',
+  booleano: 'Booleano',
+}
+
 export interface ColumnMeta {
   name: string
   data_type: string
+  semantic_type?: SemanticType | null
+  label?: string | null
+  is_dimension?: boolean | null
+  is_metric?: boolean | null
+  aggregations?: string[] | null
 }
 
 export interface Dataset {
