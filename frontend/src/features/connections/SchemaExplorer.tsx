@@ -151,12 +151,10 @@ function ObjectRow({
 // ── Grupo de esquema ───────────────────────────────────────────────────────────
 
 function SchemaGroupRow({
-  connectionId,
   group,
   selectedObj,
   onSelect,
 }: {
-  connectionId: string
   group: { name: string; objects: SchemaObject[] }
   selectedObj: SelectedObject | null
   onSelect: (o: SelectedObject) => void
@@ -308,7 +306,6 @@ export function SchemaExplorer({ connection }: { connection: Connection }) {
             {!unsupported && filteredSchemas?.map((group) => (
               <SchemaGroupRow
                 key={group.name}
-                connectionId={connection.id}
                 group={group}
                 selectedObj={selectedObj}
                 onSelect={setSelectedObj}
