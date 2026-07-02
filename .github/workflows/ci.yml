@@ -14,6 +14,9 @@ on:
 jobs:
   backend:
     runs-on: ubuntu-latest
+    # El secret MINERVA_SDK_PAT vive en el environment `mirador-ci` (no a nivel
+    # repo): el job debe declararlo para que quede en el contexto `secrets.*`.
+    environment: mirador-ci
     defaults:
       run:
         working-directory: backend
