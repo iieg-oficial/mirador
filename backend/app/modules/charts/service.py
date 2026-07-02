@@ -11,15 +11,21 @@ from app.modules.connections.models import Connection
 from app.modules.datasets.models import Dataset, DatasetStatus
 from app.modules.datasets.schemas import PreviewResult
 from app.modules.datasets import service as dataset_service
+from app.modules.charts.spec import (
+    TYPE_FIELDS,
+    ChartSpecValidation,
+    parse_spec,
+    validate_spec_against_dataset,
+)
 
-# Tipos de gráfica que el renderer ECharts del frontend sabe montar.
-_CHART_TYPES = {"line", "bar", "pie", "scatter", "candlestick", "boxplot", "treemap"}
+# Tipos de gráfica soportados (los 9 del laboratorio de datos; el frontend
+# renderiza table/kpi como componentes React y el resto con ECharts).
+_CHART_TYPES = {
+    "line", "bar", "pie", "scatter", "candlestick", "boxplot", "treemap", "table", "kpi",
+}
 
 # Tipos con columnas nombradas (viven en field_mapping["fields"]) en vez de x/y.
-_TYPE_FIELDS: dict[str, tuple[str, ...]] = {
-    "candlestick": ("open", "close", "lowest", "highest"),
-    "boxplot": ("min", "q1", "median", "q3", "max"),
-}
+_TYPE_FIELDS = TYPE_FIELDS
 
 
 def _dataset_column_names(dataset: Dataset) -> set[str]:
@@ -124,6 +130,28 @@ def delete_chart(session: Session, obj: Chart) -> None:
     obj.status = "archived"
     session.add(obj)
     session.commit()
+
+
+def validate_chart_spec(session: Session, raw_spec: dict) -> ChartSpecValidation:
+    """Valida una ChartSpec completa: esquema JSON, dataset y compatibilidad (RF-06)."""
+    spec, schema_errors = parse_spec(raw_spec)
+    if spec is None:
+        return ChartSpecValidation(valid=False, errors=schema_errors, warnings=[])
+
+    dataset = dataset_service.get_dataset(session, spec.data.dataset_id)
+    if dataset is None or dataset.status == DatasetStatus.archived:
+        return ChartSpecValidation(
+            valid=False, errors=["El dataset referenciado no existe."], warnings=[]
+        )
+    if dataset.status not in (DatasetStatus.validated, DatasetStatus.published):
+        return ChartSpecValidation(
+            valid=False,
+            errors=["El dataset debe estar validado antes de graficar sobre él."],
+            warnings=[],
+        )
+
+    errors, warnings = validate_spec_against_dataset(spec, dataset)
+    return ChartSpecValidation(valid=not errors, errors=errors, warnings=warnings)
 
 
 def preview_chart(

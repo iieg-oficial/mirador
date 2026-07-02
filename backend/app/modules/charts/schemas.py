@@ -7,6 +7,13 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 
+class ChartSpecPayload(BaseModel):
+    """Cuerpo de POST /validate: la spec cruda se parsea en el service para
+    devolver errores legibles en vez de un 422 genérico."""
+
+    chart_spec: dict[str, Any]
+
+
 class ChartCreate(BaseModel):
     dataset_id: uuid.UUID
     name: str = Field(min_length=1, max_length=120)

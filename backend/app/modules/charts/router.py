@@ -11,7 +11,8 @@ from app.modules.auth.deps import require_permission
 from app.modules.auth.models import CurrentUser
 from app.modules.charts import service
 from app.modules.charts.models import Chart
-from app.modules.charts.schemas import ChartCreate, ChartRead, ChartUpdate
+from app.modules.charts.schemas import ChartCreate, ChartRead, ChartSpecPayload, ChartUpdate
+from app.modules.charts.spec import ChartSpecValidation
 from app.modules.connections import service as conn_service
 from app.modules.datasets import service as dataset_service
 from app.modules.datasets.schemas import PreviewResult
@@ -25,6 +26,19 @@ def _get_or_404(session: Session, chart_id: uuid.UUID) -> Chart:
     if obj is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Gráfica no encontrada")
     return obj
+
+
+# ── Validación de ChartSpec (RF-06) ──────────────────────────────────────────
+
+
+@router.post("/validate", response_model=ChartSpecValidation)
+def validate_chart_spec(
+    payload: ChartSpecPayload,
+    session: Session = Depends(get_session),
+    _: CurrentUser = Depends(require_permission("tablerillos.charts.view")),
+) -> ChartSpecValidation:
+    """Valida una ChartSpec sin guardarla: esquema, dataset y compatibilidad."""
+    return service.validate_chart_spec(session, payload.chart_spec)
 
 
 # ── CRUD ─────────────────────────────────────────────────────────────────────
