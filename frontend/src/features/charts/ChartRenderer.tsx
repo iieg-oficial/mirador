@@ -231,6 +231,43 @@ export function buildOption(spec: ChartSpec, rows: Record<string, unknown>[]): E
   } as EChartsOption
 }
 
+// ── Overrides controlados (Fase 5) ─────────────────────────────────────────────
+
+const DANGEROUS_KEYS = new Set(['__proto__', 'constructor', 'prototype'])
+
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v)
+}
+
+// Objetos se fusionan; arrays y escalares se reemplazan. El backend ya valida
+// la whitelist y las claves peligrosas; aquí se re-filtra como segunda red.
+function deepMerge(
+  base: Record<string, unknown>,
+  override: Record<string, unknown>,
+): Record<string, unknown> {
+  const out = { ...base }
+  for (const [key, value] of Object.entries(override)) {
+    if (DANGEROUS_KEYS.has(key)) continue
+    const prev = out[key]
+    out[key] = isPlainObject(prev) && isPlainObject(value) ? deepMerge(prev, value) : value
+  }
+  return out
+}
+
+/** Aplica los `overrides` de la spec (legend/tooltip/grid) sobre el option generado. */
+export function applyOverrides(option: EChartsOption, spec: ChartSpec): EChartsOption {
+  const overrides = spec.overrides
+  if (!overrides) return option
+  let out = option as Record<string, unknown>
+  for (const section of ['legend', 'tooltip', 'grid'] as const) {
+    const value = overrides[section]
+    if (!isPlainObject(value)) continue
+    const prev = out[section]
+    out = { ...out, [section]: isPlainObject(prev) ? deepMerge(prev, value) : value }
+  }
+  return out as EChartsOption
+}
+
 // ── Render de tabla (no es ECharts) ───────────────────────────────────────────
 
 const TABLE_PAGE_SIZE = 15
@@ -372,7 +409,7 @@ function EchartsRenderer({ spec, rows, className = '' }: ChartRendererProps) {
   // Actualizar opciones cuando cambian los datos o la configuración
   useEffect(() => {
     if (!instanceRef.current) return
-    instanceRef.current.setOption(buildOption(spec, rows), true)
+    instanceRef.current.setOption(applyOverrides(buildOption(spec, rows), spec), true)
   }, [spec, rows])
 
   return <div ref={containerRef} className={`w-full h-full ${className}`} />

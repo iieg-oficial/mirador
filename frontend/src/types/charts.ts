@@ -108,6 +108,14 @@ export interface StyleSpec {
   legend_position: LegendPosition
 }
 
+// Overrides controlados sobre el EChartsOption generado (Fase 5): solo las
+// secciones de la whitelist del backend (legend/tooltip/grid), JSON puro.
+export interface OverridesSpec {
+  legend?: Record<string, unknown>
+  tooltip?: Record<string, unknown>
+  grid?: Record<string, unknown>
+}
+
 export interface ChartSpec {
   version: '1.0'
   data: DataSpec
@@ -115,6 +123,7 @@ export interface ChartSpec {
   encodings: EncodingsSpec
   interactions: InteractionsSpec
   style: StyleSpec
+  overrides?: OverridesSpec | null
 }
 
 /** Spec vacía con los mismos defaults que el backend. */

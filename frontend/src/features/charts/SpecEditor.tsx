@@ -3,7 +3,7 @@ import CodeMirror from '@uiw/react-codemirror'
 import { json } from '@codemirror/lang-json'
 import { validateSpec } from './api'
 import type { ChartValidation } from './api'
-import { buildOption } from './ChartRenderer'
+import { applyOverrides, buildOption } from './ChartRenderer'
 import type { ChartSpec } from '@/types/charts'
 
 // Editor avanzado de ChartSpec (RF-04): JSON con resaltado, validación contra
@@ -82,7 +82,8 @@ export function SpecEditor({ initial, onSpecChange, generatedSql, previewRows }:
     const t = spec.visual?.chart_type
     if (t === 'table' || t === 'kpi') return null
     try {
-      return JSON.stringify(buildOption(spec, previewRows), null, 2)
+      // Con los overrides ya aplicados, para ver el efecto real (Fase 5).
+      return JSON.stringify(applyOverrides(buildOption(spec, previewRows), spec), null, 2)
     } catch {
       return null
     }
