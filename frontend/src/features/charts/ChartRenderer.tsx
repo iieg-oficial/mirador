@@ -3,6 +3,7 @@ import * as echarts from 'echarts'
 import type { ECharts, EChartsOption } from 'echarts'
 import { AGGREGATION_LABELS } from '@/types/charts'
 import type { ChartSpec, LegendPosition } from '@/types/charts'
+import { echartsTheme } from './themes'
 
 // ── Posición de leyenda → opción ECharts ───────────────────────────────────────
 
@@ -390,10 +391,12 @@ function EchartsRenderer({ spec, rows, className = '' }: ChartRendererProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const instanceRef = useRef<ECharts | null>(null)
 
-  // Inicializar / destruir instancia con el contenedor
+  // Inicializar / destruir instancia con el contenedor. El tema de ECharts
+  // solo se aplica en init, así que un cambio de tema re-crea la instancia.
+  const theme = echartsTheme(spec.style.theme)
   useEffect(() => {
     if (!containerRef.current) return
-    const chart = echarts.init(containerRef.current, undefined, { renderer: 'canvas' })
+    const chart = echarts.init(containerRef.current, theme, { renderer: 'canvas' })
     instanceRef.current = chart
 
     const onResize = () => chart.resize()
@@ -404,7 +407,7 @@ function EchartsRenderer({ spec, rows, className = '' }: ChartRendererProps) {
       chart.dispose()
       instanceRef.current = null
     }
-  }, [])
+  }, [theme])
 
   // Actualizar opciones cuando cambian los datos o la configuración
   useEffect(() => {

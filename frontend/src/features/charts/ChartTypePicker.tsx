@@ -3,9 +3,9 @@ import * as echarts from 'echarts'
 import type { EChartsOption } from 'echarts'
 import type { ChartType } from '@/types/charts'
 
-// ── Paleta IIEG ───────────────────────────────────────────────────────────────
+// ── Paleta IIEG (tema institucional, RNF-07) ──────────────────────────────────
 
-const C = ['#7c3aed', '#9a52ba', '#c084fc', '#f97316', '#fb923c', '#4ade80']
+import { INSTITUTIONAL_PALETTE as C } from './themes'
 
 // ── Opciones de muestra por tipo ──────────────────────────────────────────────
 

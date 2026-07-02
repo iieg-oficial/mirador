@@ -105,7 +105,8 @@ class InteractionsSpec(BaseModel):
 
 
 class StyleSpec(BaseModel):
-    theme: str = Field(default="institutional", max_length=40)
+    # Temas registrados en el frontend (RNF-07); "default" usa el de ECharts.
+    theme: Literal["institutional", "default"] = "institutional"
     show_labels: bool = False
     orientation: Literal["vertical", "horizontal"] = "vertical"
     legend_position: str = Field(default="top", max_length=20)

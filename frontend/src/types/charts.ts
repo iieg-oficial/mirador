@@ -102,7 +102,7 @@ export const LEGEND_POSITION_LABELS: Record<LegendPosition, string> = {
 }
 
 export interface StyleSpec {
-  theme: string
+  theme: 'institutional' | 'default'
   show_labels: boolean
   orientation: 'vertical' | 'horizontal'
   legend_position: LegendPosition

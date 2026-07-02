@@ -119,6 +119,12 @@ def test_parse_spec_bad_filter_operator_value() -> None:
     assert spec is None
 
 
+def test_parse_spec_unknown_theme() -> None:
+    spec, errors = parse_spec(_raw_spec(style={"theme": "dark"}))
+    assert spec is None
+    assert any("style.theme" in e for e in errors)
+
+
 # ── Overrides controlados (Fase 5) ────────────────────────────────────────────
 
 
