@@ -7,10 +7,12 @@ identidad inyectada por el override de `conftest`.
 """
 
 import pytest
+import redis
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from app.modules.auth import minerva
+from app.modules.auth import session as session_module
 from app.modules.auth.deps import require_app_access, require_permission
 from app.modules.auth.models import CurrentUser
 
@@ -115,3 +117,22 @@ async def test_refresh_and_retry_rotates_and_persists(monkeypatch: pytest.Monkey
     assert claims["sub"] == "u"
     assert saved["key"] == "session:sid1"
     assert saved["data"]["refresh_token"] == "new-r"  # rotado (single-use)
+
+
+def test_login_returns_503_when_redis_down(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Redis caído no debe terminar en 500: el SessionStore responde 503 claro."""
+
+    class _DownRedis:
+        def __getattr__(self, name: str):  # type: ignore[no-untyped-def]
+            def _raise(*args: object, **kwargs: object) -> None:
+                raise redis.RedisError("connection refused")
+
+            return _raise
+
+    monkeypatch.setattr(session_module, "get_redis", lambda: _DownRedis())
+
+    res = client.get("/api/auth/login", follow_redirects=False)
+    assert res.status_code == 503, res.text
+    assert "sesión" in res.json()["detail"]
