@@ -3,13 +3,46 @@
 import re
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
 from app.modules.datasets.models import DatasetStatus
 
 _SLUG_RE = re.compile(r"^[a-z0-9_-]+$")
+
+# Tipo semántico de una columna: guía al constructor de gráficas sobre cómo
+# puede usarse el campo (dimensión, métrica, eje temporal, etc.).
+SemanticType = Literal[
+    "categorica",
+    "metrica",
+    "temporal",
+    "geografica",
+    "identificador",
+    "texto",
+    "booleano",
+]
+
+# Agregaciones que el query builder de charts sabe generar.
+Aggregation = Literal["sum", "avg", "min", "max", "count", "count_distinct"]
+
+
+class ColumnMeta(BaseModel):
+    name: str
+    data_type: str
+    # Metadata semántica (opcional para compatibilidad con datasets previos).
+    # Se infiere automáticamente al validar el dataset y es editable a mano.
+    semantic_type: SemanticType | None = None
+    label: str | None = Field(default=None, max_length=120)
+    is_dimension: bool | None = None
+    is_metric: bool | None = None
+    aggregations: list[Aggregation] | None = None
+
+
+class ColumnsSchemaPayload(BaseModel):
+    """Payload de edición manual de la metadata semántica de columnas."""
+
+    columns: list[ColumnMeta]
 
 
 class DatasetCreate(BaseModel):
@@ -36,6 +69,9 @@ class DatasetUpdate(BaseModel):
     cache_ttl_seconds: int | None = Field(default=None, ge=0, le=86400)
     max_rows: int | None = Field(default=None, ge=1, le=50000)
     status: DatasetStatus | None = None
+    # Edición manual de metadata semántica de columnas: los nombres deben
+    # existir en el schema inferido; el tipo físico (data_type) no es editable.
+    columns_schema: ColumnsSchemaPayload | None = None
 
 
 class DatasetRead(BaseModel):
@@ -74,11 +110,6 @@ class PreviewRequest(BaseModel):
     """Petición de preview de un dataset guardado (usa su SQL y max_rows)."""
 
     params: dict[str, Any] = Field(default_factory=dict)
-
-
-class ColumnMeta(BaseModel):
-    name: str
-    data_type: str
 
 
 class PreviewResult(BaseModel):

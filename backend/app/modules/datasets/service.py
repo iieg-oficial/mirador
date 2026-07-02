@@ -37,6 +37,70 @@ _DEFAULT_STATEMENT_TIMEOUT_MS = 15_000
 # confunda con un parámetro nombrado.
 _NAMED_PARAM_RE = re.compile(r"(?<!:):([a-zA-Z_][a-zA-Z0-9_]*)")
 
+# ── Inferencia semántica de columnas ─────────────────────────────────────────
+
+_NUMERIC_TYPES = {
+    "int2", "int4", "int8", "smallint", "integer", "bigint",
+    "numeric", "decimal", "float4", "float8", "real", "double precision", "money",
+}
+_TEMPORAL_TYPES = {"date", "time", "timetz", "timestamp", "timestamptz", "interval"}
+_BOOL_TYPES = {"bool", "boolean"}
+_GEO_TYPES = {"geometry", "geography"}
+# Columnas que por nombre son identificadores (id, *_id, cve_*, clave_*):
+# dimensiones de unión, no métricas aunque sean numéricas.
+_ID_NAME_RE = re.compile(r"(^id$|_id$|^cve_|_cve$|^clave(_|$))")
+
+
+def infer_semantics(name: str, data_type: str) -> dict[str, Any]:
+    """Infiere la metadata semántica de una columna desde su nombre y tipo PG.
+
+    Es un punto de partida editable: el analista puede corregirla después vía
+    `DatasetUpdate.columns_schema` (p. ej. marcar un texto largo como 'texto'
+    en vez de 'categorica').
+    """
+    dt = data_type.lower()
+    label = name.replace("_", " ").strip().capitalize()
+    if _ID_NAME_RE.search(name.lower()):
+        sem, dim, met, aggs = "identificador", True, False, ["count", "count_distinct"]
+    elif dt in _GEO_TYPES:
+        sem, dim, met, aggs = "geografica", False, False, []
+    elif dt in _NUMERIC_TYPES:
+        sem, dim, met, aggs = "metrica", False, True, ["sum", "avg", "min", "max", "count"]
+    elif dt in _TEMPORAL_TYPES:
+        sem, dim, met, aggs = "temporal", True, False, ["min", "max", "count"]
+    elif dt in _BOOL_TYPES:
+        sem, dim, met, aggs = "booleano", True, False, ["count"]
+    else:
+        sem, dim, met, aggs = "categorica", True, False, ["count", "count_distinct"]
+    return {
+        "semantic_type": sem,
+        "label": label,
+        "is_dimension": dim,
+        "is_metric": met,
+        "aggregations": aggs,
+    }
+
+
+def merge_manual_columns(current_schema: dict | None, manual: dict) -> dict:
+    """Aplica una edición manual de metadata sobre el schema de columnas vigente.
+
+    - Los nombres del payload deben existir en el schema inferido.
+    - `data_type` no es editable (siempre se conserva el inferido).
+    - Las columnas no incluidas en el payload conservan su metadata actual.
+    """
+    current = {c["name"]: c for c in (current_schema or {}).get("columns", [])}
+    if not current:
+        raise ValueError("El dataset no tiene columnas inferidas; valida el SQL primero.")
+    incoming = {c["name"]: c for c in manual.get("columns", [])}
+    unknown = sorted(set(incoming) - set(current))
+    if unknown:
+        raise ValueError(f"Columnas inexistentes en el dataset: {', '.join(unknown)}.")
+    merged = [
+        {**incoming.get(name, col), "name": name, "data_type": col["data_type"]}
+        for name, col in current.items()
+    ]
+    return {"columns": merged}
+
 
 # ── CRUD ─────────────────────────────────────────────────────────────────────
 
@@ -78,6 +142,7 @@ def update_dataset(
     session: Session, obj: Dataset, data: DatasetUpdate, connection: Connection
 ) -> Dataset:
     fields = data.model_dump(exclude_unset=True)
+    manual_columns = fields.pop("columns_schema", None)
     if "sql_query" in fields:
         validate_sql(fields["sql_query"])
         fields["sql_query"] = normalize_sql(fields["sql_query"])
@@ -85,6 +150,11 @@ def update_dataset(
         fields["columns_schema"] = {"columns": cols}
         fields["parameters_schema"] = {"params": [{"name": p} for p in params]}
         fields["status"] = DatasetStatus.validated
+    if manual_columns is not None:
+        # La edición manual se aplica sobre el schema vigente (el re-inferido
+        # si en la misma petición también cambió el SQL).
+        base_schema = fields.get("columns_schema", obj.columns_schema)
+        fields["columns_schema"] = merge_manual_columns(base_schema, manual_columns)
     for key, value in fields.items():
         setattr(obj, key, value)
     session.add(obj)
@@ -122,7 +192,14 @@ def _infer_schema(connection: Connection, sql: str) -> tuple[list[dict[str, str]
             cur.execute(f"SET statement_timeout = {_DEFAULT_STATEMENT_TIMEOUT_MS}")
             cur.execute(limited)
             cols = (
-                [{"name": d.name, "data_type": _pg_type(d)} for d in cur.description]
+                [
+                    {
+                        "name": d.name,
+                        "data_type": _pg_type(d),
+                        **infer_semantics(d.name, _pg_type(d)),
+                    }
+                    for d in cur.description
+                ]
                 if cur.description
                 else []
             )

@@ -7,7 +7,12 @@ ignorar los casts de PostgreSQL (`::tipo`) — ver REVISION_CODIGO.md #1.
 import pytest
 
 from app.core.sql_guard import normalize_sql, validate_sql
-from app.modules.datasets.service import _extract_named_params, _named_to_psycopg
+from app.modules.datasets.service import (
+    _extract_named_params,
+    _named_to_psycopg,
+    infer_semantics,
+    merge_manual_columns,
+)
 
 
 def test_named_param_simple() -> None:
@@ -67,3 +72,80 @@ def test_validate_sql_accepts_trailing_semicolon() -> None:
 def test_validate_sql_still_rejects_multiple_statements() -> None:
     with pytest.raises(ValueError):
         validate_sql("SELECT 1; SELECT 2;")
+
+
+# ── Metadata semántica de columnas ────────────────────────────────────────────
+
+
+def test_infer_semantics_numeric_is_metric() -> None:
+    meta = infer_semantics("poblacion_total", "int8")
+    assert meta["semantic_type"] == "metrica"
+    assert meta["is_metric"] is True
+    assert meta["is_dimension"] is False
+    assert "sum" in meta["aggregations"]
+    assert meta["label"] == "Poblacion total"
+
+
+def test_infer_semantics_text_is_categorical() -> None:
+    meta = infer_semantics("municipio", "text")
+    assert meta["semantic_type"] == "categorica"
+    assert meta["is_dimension"] is True
+    assert meta["aggregations"] == ["count", "count_distinct"]
+
+
+def test_infer_semantics_temporal_and_bool() -> None:
+    assert infer_semantics("fecha", "date")["semantic_type"] == "temporal"
+    assert infer_semantics("creado", "timestamptz")["semantic_type"] == "temporal"
+    assert infer_semantics("activo", "bool")["semantic_type"] == "booleano"
+
+
+def test_infer_semantics_identifier_by_name() -> None:
+    # Numérico pero identificador por nombre: no es métrica.
+    for name in ("id", "municipio_id", "cve_mun", "clave_region"):
+        meta = infer_semantics(name, "int4")
+        assert meta["semantic_type"] == "identificador", name
+        assert meta["is_metric"] is False
+
+
+def test_infer_semantics_geometry() -> None:
+    meta = infer_semantics("geom", "geometry")
+    assert meta["semantic_type"] == "geografica"
+    assert meta["is_dimension"] is False
+    assert meta["aggregations"] == []
+
+
+def test_merge_manual_columns_overrides_semantics_keeps_type() -> None:
+    current = {
+        "columns": [
+            {"name": "municipio", "data_type": "text", "semantic_type": "categorica"},
+            {"name": "poblacion", "data_type": "int8", "semantic_type": "metrica"},
+        ]
+    }
+    manual = {
+        "columns": [
+            {
+                "name": "municipio",
+                "data_type": "varchar",  # intento de cambiar el tipo físico: se ignora
+                "semantic_type": "texto",
+                "label": "Municipio",
+            }
+        ]
+    }
+    merged = merge_manual_columns(current, manual)
+    by_name = {c["name"]: c for c in merged["columns"]}
+    assert by_name["municipio"]["semantic_type"] == "texto"
+    assert by_name["municipio"]["data_type"] == "text"  # tipo físico intacto
+    # La columna no incluida conserva su metadata.
+    assert by_name["poblacion"]["semantic_type"] == "metrica"
+    assert [c["name"] for c in merged["columns"]] == ["municipio", "poblacion"]
+
+
+def test_merge_manual_columns_rejects_unknown_column() -> None:
+    current = {"columns": [{"name": "a", "data_type": "text"}]}
+    with pytest.raises(ValueError, match="inexistentes"):
+        merge_manual_columns(current, {"columns": [{"name": "zzz", "data_type": "text"}]})
+
+
+def test_merge_manual_columns_requires_inferred_schema() -> None:
+    with pytest.raises(ValueError, match="valida el SQL"):
+        merge_manual_columns(None, {"columns": []})
