@@ -6,6 +6,7 @@ import { listCharts, createChart, updateChart, deleteChart, previewSpec } from '
 import type { ChartPreviewResult } from './api'
 import { ChartRenderer } from './ChartRenderer'
 import { ChartTypePicker } from './ChartTypePicker'
+import { SpecEditor } from './SpecEditor'
 import type {
   Aggregation,
   Chart,
@@ -447,15 +448,17 @@ const BUILDER_DEFAULTS: BuilderState = {
   legendPosition: 'top',
 }
 
-function builderFromChart(chart: Chart): BuilderState {
-  const spec = chart.chart_spec
+// Vuelca una spec al estado del builder visual (best-effort: encodings de
+// tooltip/size u ordenamientos múltiples del modo avanzado no tienen control
+// visual y se conservan solo mientras se edita en JSON).
+function stateFromSpec(spec: ChartSpec, name: string, description: string): BuilderState {
   const aggregations: Record<string, Aggregation | ''> = {}
   for (const e of spec.encodings.y) {
     if (e.aggregation) aggregations[e.field] = e.aggregation
   }
   return {
-    name: chart.name,
-    description: chart.description ?? '',
+    name,
+    description,
     datasetId: spec.data.dataset_id,
     chartType: spec.visual.chart_type,
     fieldX: spec.encodings.x.map((e) => e.field),
@@ -476,6 +479,10 @@ function builderFromChart(chart: Chart): BuilderState {
     showLegend: spec.interactions.legend,
     legendPosition: spec.style.legend_position,
   }
+}
+
+function builderFromChart(chart: Chart): BuilderState {
+  return stateFromSpec(chart.chart_spec, chart.name, chart.description ?? '')
 }
 
 // Convierte el valor de texto de un filtro al tipo que espera el backend.
@@ -541,6 +548,9 @@ function ChartBuilder({
   const [previewLoading, setPreviewLoading] = useState(false)
   const [previewError, setPreviewError] = useState<string | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
+  // Modo avanzado (RF-04): edición directa de la ChartSpec en JSON.
+  const [mode, setMode] = useState<'visual' | 'json'>('visual')
+  const [advancedSpec, setAdvancedSpec] = useState<ChartSpec | null>(null)
 
   const set = useCallback(
     <K extends keyof BuilderState>(key: K, value: BuilderState[K]) => {
@@ -611,20 +621,36 @@ function ChartBuilder({
     set(key, [...state[key], column])
   }
 
+  // Spec efectiva: la del editor JSON cuando el modo avanzado está activo y
+  // el JSON parsea; si no, la derivada del builder visual.
+  const currentSpec = specFromState(state, schemaColumns)
+  const effectiveSpec = mode === 'json' && advancedSpec ? advancedSpec : currentSpec
+
   // Preview por spec: el backend genera la consulta segura (agregación,
   // filtros y orden server-side) y devuelve solo las filas necesarias.
   async function runPreview() {
-    if (!state.datasetId || !requiredFilled) return
+    if (mode === 'visual' && (!state.datasetId || !requiredFilled)) return
     setPreviewLoading(true)
     setPreviewError(null)
     try {
-      const result = await previewSpec(specFromState(state, schemaColumns))
+      const result = await previewSpec(effectiveSpec)
       setPreviewData(result)
     } catch (err) {
       setPreviewError((err as Error).message)
     } finally {
       setPreviewLoading(false)
     }
+  }
+
+  // Cambio de modo: al volver al visual se sincroniza lo representable de la
+  // spec avanzada con los controles del builder.
+  function switchMode(next: 'visual' | 'json') {
+    if (next === mode) return
+    if (next === 'visual' && advancedSpec) {
+      setState(stateFromSpec(advancedSpec, state.name, state.description))
+    }
+    setAdvancedSpec(null)
+    setMode(next)
   }
 
   // Al editar una gráfica guardada ya hay un dataset seleccionado: disparar el
@@ -637,7 +663,10 @@ function ChartBuilder({
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      const chartSpec = specFromState(state, schemaColumns)
+      if (mode === 'json' && !advancedSpec) {
+        throw new Error('El JSON de la spec es inválido; corrígelo antes de guardar.')
+      }
+      const chartSpec = effectiveSpec
       if (editingChart) {
         return updateChart(editingChart.id, {
           name: state.name,
@@ -658,14 +687,13 @@ function ChartBuilder({
     onError: (err) => setSaveError((err as Error).message),
   })
 
-  const currentSpec = specFromState(state, schemaColumns)
-
   const referencedCols = zones.flatMap((z) => zoneValues(z))
   const showChart =
     previewData &&
     previewData.rows.length > 0 &&
-    requiredFilled &&
-    referencedCols.every((c) => previewData.columns.some((col) => col.name === c))
+    (mode === 'json' ||
+      (requiredFilled &&
+        referencedCols.every((c) => previewData.columns.some((col) => col.name === c))))
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
@@ -718,9 +746,48 @@ function ChartBuilder({
         </div>
       </div>
 
-      {/* Main: 3 columnas */}
+      {/* Toggle de modo: visual / avanzado (JSON) */}
+      <div className="flex items-center gap-1 border-b border-gray-100 bg-white px-6 py-1.5">
+        <button
+          type="button"
+          onClick={() => switchMode('visual')}
+          className={`rounded-lg px-3 py-1 text-xs font-medium ${
+            mode === 'visual' ? 'bg-iieg-100 text-iieg-700' : 'text-gray-500 hover:bg-gray-50'
+          }`}
+        >
+          Modo visual
+        </button>
+        <button
+          type="button"
+          onClick={() => switchMode('json')}
+          className={`rounded-lg px-3 py-1 text-xs font-medium ${
+            mode === 'json' ? 'bg-iieg-100 text-iieg-700' : 'text-gray-500 hover:bg-gray-50'
+          }`}
+        >
+          Avanzado (JSON)
+        </button>
+        {mode === 'json' && (
+          <span className="ml-2 text-[11px] text-gray-400">
+            Edita la ChartSpec directamente; sin SQL ni JavaScript libres.
+          </span>
+        )}
+      </div>
+
+      {/* Main: 3 columnas (visual) o editor + preview (avanzado) */}
       <div className="flex flex-1 overflow-hidden">
+        {mode === 'json' && (
+          <div className="w-1/2 flex-shrink-0 border-r border-gray-100 bg-white">
+            <SpecEditor
+              initial={currentSpec}
+              onSpecChange={setAdvancedSpec}
+              generatedSql={previewData?.generated_sql ?? null}
+              previewRows={previewData?.rows ?? null}
+            />
+          </div>
+        )}
+
         {/* Izquierda: esquema del dataset + mapeo de campos (drag & drop) */}
+        {mode === 'visual' && (
         <div className="w-64 flex-shrink-0 space-y-4 overflow-y-auto border-r border-gray-100 bg-white p-4">
           <div>
             <p className="mb-2 text-xs font-bold uppercase tracking-wider text-gray-400">
@@ -780,6 +847,7 @@ function ChartBuilder({
               )}
           </div>
         </div>
+        )}
 
         {/* Centro: vista previa */}
         <div className="flex flex-1 flex-col overflow-hidden bg-gray-50">
@@ -816,7 +884,7 @@ function ChartBuilder({
 
             {!previewError && showChart && (
               <div className="h-full min-h-[300px] rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-                <ChartRenderer spec={currentSpec} rows={previewData!.rows} />
+                <ChartRenderer spec={effectiveSpec} rows={previewData!.rows} />
               </div>
             )}
 
@@ -860,7 +928,8 @@ function ChartBuilder({
           )}
         </div>
 
-        {/* Derecha: config visual */}
+        {/* Derecha: config visual (solo en modo visual) */}
+        {mode === 'visual' && (
         <div className="w-56 flex-shrink-0 space-y-4 overflow-y-auto border-l border-gray-100 bg-white p-4">
           <p className="text-xs font-bold uppercase tracking-wider text-gray-400">
             Configuración visual
@@ -1052,6 +1121,7 @@ function ChartBuilder({
             </div>
           </div>
         </div>
+        )}
       </div>
 
       {/* Footer */}
