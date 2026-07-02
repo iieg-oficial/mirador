@@ -463,6 +463,7 @@ interface BuilderState {
   subtitle: string
   showLegend: boolean
   legendPosition: LegendPosition
+  showDownload: boolean
 }
 
 const BUILDER_DEFAULTS: BuilderState = {
@@ -483,6 +484,7 @@ const BUILDER_DEFAULTS: BuilderState = {
   subtitle: '',
   showLegend: true,
   legendPosition: 'top',
+  showDownload: false,
 }
 
 // Vuelca una spec al estado del builder visual (best-effort: encodings de
@@ -511,6 +513,7 @@ function stateFromSpec(spec: ChartSpec, name: string, description: string): Buil
     subtitle: spec.visual.subtitle ?? '',
     showLegend: spec.interactions.legend,
     legendPosition: spec.style.legend_position,
+    showDownload: spec.interactions.download,
   }
 }
 
@@ -539,6 +542,7 @@ function specFromState(state: BuilderState, columns: ColumnMeta[]): ChartSpec {
   spec.data.limit = state.limit
   spec.interactions.legend = state.showLegend
   spec.style.legend_position = state.legendPosition
+  spec.interactions.download = state.showDownload
   return spec
 }
 
@@ -1075,6 +1079,13 @@ function ChartBuilder({
               options={LEGEND_POSITIONS.map((p) => ({ value: p, label: LEGEND_POSITION_LABELS[p] }))}
             />
           )}
+
+          <Toggle
+            label="Permitir descargar como imagen (PNG)"
+            value={state.showDownload}
+            onChange={(v) => set('showDownload', v)}
+          />
+
 
           {/* Agregaciones por métrica (según la metadata semántica del dataset) */}
           {state.fieldY.length > 0 && (
