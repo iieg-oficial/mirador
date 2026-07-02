@@ -1,6 +1,7 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import * as echarts from 'echarts'
 import type { ECharts, EChartsOption } from 'echarts'
+import { AGGREGATION_LABELS } from '@/types/charts'
 import type { ChartSpec, LegendPosition } from '@/types/charts'
 
 // ── Posición de leyenda → opción ECharts ───────────────────────────────────────
@@ -230,6 +231,116 @@ export function buildOption(spec: ChartSpec, rows: Record<string, unknown>[]): E
   } as EChartsOption
 }
 
+// ── Render de tabla (no es ECharts) ───────────────────────────────────────────
+
+const TABLE_PAGE_SIZE = 15
+
+function formatCell(v: unknown): string {
+  if (v == null) return '—'
+  if (typeof v === 'number') return v.toLocaleString('es-MX')
+  return String(v)
+}
+
+function TableRenderer({ spec, rows, className = '' }: ChartRendererProps) {
+  const [page, setPage] = useState(0)
+
+  // Columnas en el orden de los encodings (x → y → tooltip), sin duplicar.
+  const columns = useMemo(() => {
+    const enc = spec.encodings
+    const ordered = [...enc.x, ...enc.y, ...enc.tooltip].map((e) => e.field)
+    const unique = [...new Set(ordered)]
+    return unique.length > 0 ? unique : Object.keys(rows[0] ?? {})
+  }, [spec, rows])
+
+  const pages = Math.max(1, Math.ceil(rows.length / TABLE_PAGE_SIZE))
+  const current = Math.min(page, pages - 1)
+  const pageRows = rows.slice(current * TABLE_PAGE_SIZE, (current + 1) * TABLE_PAGE_SIZE)
+
+  return (
+    <div className={`flex h-full w-full flex-col ${className}`}>
+      {spec.visual.title && (
+        <p className="mb-2 text-sm font-bold text-gray-800">{spec.visual.title}</p>
+      )}
+      <div className="flex-1 overflow-auto rounded-lg border border-gray-100">
+        <table className="w-full text-left text-xs">
+          <thead className="sticky top-0 bg-gray-50">
+            <tr>
+              {columns.map((c) => (
+                <th key={c} className="border-b border-gray-200 px-3 py-2 font-semibold text-gray-600">
+                  {c}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {pageRows.map((r, i) => (
+              <tr key={i} className="odd:bg-white even:bg-gray-50/50">
+                {columns.map((c) => (
+                  <td key={c} className="border-b border-gray-100 px-3 py-1.5 text-gray-700">
+                    {formatCell(r[c])}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {pages > 1 && (
+        <div className="mt-2 flex items-center justify-end gap-2 text-xs text-gray-500">
+          <button
+            onClick={() => setPage(Math.max(0, current - 1))}
+            disabled={current === 0}
+            className="rounded border border-gray-200 px-2 py-0.5 disabled:opacity-40"
+          >
+            ‹
+          </button>
+          <span>
+            {current + 1} / {pages}
+          </span>
+          <button
+            onClick={() => setPage(Math.min(pages - 1, current + 1))}
+            disabled={current >= pages - 1}
+            className="rounded border border-gray-200 px-2 py-0.5 disabled:opacity-40"
+          >
+            ›
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Render de tarjeta KPI (no es ECharts) ─────────────────────────────────────
+
+function KpiRenderer({ spec, rows, className = '' }: ChartRendererProps) {
+  const metric = spec.encodings.y[0]
+  const raw = metric ? rows[0]?.[metric.field] : undefined
+  const value =
+    typeof raw === 'number'
+      ? raw.toLocaleString('es-MX', { maximumFractionDigits: 2 })
+      : raw != null
+        ? String(raw)
+        : '—'
+  const caption =
+    spec.visual.title ||
+    metric?.label ||
+    (metric ? `${metric.aggregation ? AGGREGATION_LABELS[metric.aggregation] + ' de ' : ''}${metric.field}` : '')
+
+  return (
+    <div className={`flex h-full w-full flex-col items-center justify-center ${className}`}>
+      <span className="text-4xl font-bold text-iieg-700">{value}</span>
+      {caption && (
+        <span className="mt-2 text-xs font-medium uppercase tracking-wider text-gray-500">
+          {caption}
+        </span>
+      )}
+      {spec.visual.subtitle && (
+        <span className="mt-1 text-xs text-gray-400">{spec.visual.subtitle}</span>
+      )}
+    </div>
+  )
+}
+
 // ── Componente ─────────────────────────────────────────────────────────────────
 
 interface ChartRendererProps {
@@ -238,7 +349,7 @@ interface ChartRendererProps {
   className?: string
 }
 
-export function ChartRenderer({ spec, rows, className = '' }: ChartRendererProps) {
+function EchartsRenderer({ spec, rows, className = '' }: ChartRendererProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const instanceRef = useRef<ECharts | null>(null)
 
@@ -265,4 +376,16 @@ export function ChartRenderer({ spec, rows, className = '' }: ChartRendererProps
   }, [spec, rows])
 
   return <div ref={containerRef} className={`w-full h-full ${className}`} />
+}
+
+export function ChartRenderer(props: ChartRendererProps) {
+  // table y kpi se renderizan como componentes React; el resto con ECharts.
+  switch (props.spec.visual.chart_type) {
+    case 'table':
+      return <TableRenderer {...props} />
+    case 'kpi':
+      return <KpiRenderer {...props} />
+    default:
+      return <EchartsRenderer {...props} />
+  }
 }
