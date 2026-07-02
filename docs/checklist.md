@@ -166,5 +166,5 @@ Ver `docs/modules/dashboards.md` (dashboards internos exploratorios).
 - [x] Guía de despliegue productivo (compose prod, nginx, TLS aguas arriba, respaldos)
 - [ ] `docs/modules/public.md` — pospuesto (lab interno)
 - [ ] Documentación de API pública (endpoints y contratos) — pospuesto
-- [ ] CI/CD pipeline (build, test)
+- [x] CI (GitHub Actions: ruff + mypy + pytest, build del frontend)
 - [ ] Runbook de rotación de `SECRET_ENCRYPTION_KEY`

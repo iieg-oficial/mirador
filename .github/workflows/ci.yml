@@ -1,0 +1,67 @@
+# CI de Tablerillos: lint + tipos + tests del backend, y build del frontend.
+#
+# Requiere el secret MINERVA_SDK_PAT (PAT de solo lectura sobre el repo privado
+# del minerva-sdk): es dependencia base y pip no puede omitirla, aunque los
+# tests no la usan (import perezoso + mocks en conftest).
+
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+
+      - name: Acceso al repo privado del minerva-sdk
+        run: |
+          git config --global \
+            url."https://x-access-token:${{ secrets.MINERVA_SDK_PAT }}@github.com/".insteadOf \
+            "https://github.com/"
+
+      - name: Instalar dependencias
+        run: pip install -e ".[dev]"
+
+      - name: Lint (ruff)
+        run: ruff check .
+
+      - name: Tipos (mypy)
+        run: mypy app
+
+      - name: Tests (pytest)
+        run: pytest
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      # Incluye tsc -b (type check estricto). vitest queda fuera hasta que
+      # exista el primer test (vitest run sin tests sale con error).
+      - name: Build
+        run: npm run build
