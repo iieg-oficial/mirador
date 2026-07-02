@@ -136,3 +136,29 @@ def test_restore_version_of_other_chart_is_404(client: TestClient) -> None:
     ).json()
     res = client.post(f"/api/admin/charts/{other['id']}/restore/{version_id}")
     assert res.status_code == 404
+
+
+# ── Clonado (RF-11) ───────────────────────────────────────────────────────────
+
+
+def test_clone_chart(client: TestClient) -> None:
+    chart_id, dataset_id = _create_chart(client)
+    # Genera historial en la original para verificar que el clon no lo hereda.
+    client.put(f"/api/admin/charts/{chart_id}", json={"chart_spec": _spec(dataset_id, "v2")})
+
+    res = client.post(f"/api/admin/charts/{chart_id}/clone")
+    assert res.status_code == 201, res.text
+    clone = res.json()
+    assert clone["id"] != chart_id
+    assert clone["name"] == "Barras (copia)"
+    assert clone["status"] == "draft"
+    assert clone["chart_spec"]["visual"]["title"] == "v2"  # conserva la spec vigente
+    # Sin historial heredado.
+    assert client.get(f"/api/admin/charts/{clone['id']}/versions").json() == []
+
+
+def test_clone_missing_chart_is_404(client: TestClient) -> None:
+    import uuid as _uuid
+
+    res = client.post(f"/api/admin/charts/{_uuid.uuid4()}/clone")
+    assert res.status_code == 404

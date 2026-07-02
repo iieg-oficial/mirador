@@ -150,6 +150,26 @@ def restore_version(
     return obj
 
 
+def clone_chart(session: Session, obj: Chart, user: CurrentUser) -> Chart:
+    """Clona una gráfica como recurso independiente (RF-11): conserva la spec,
+    nace en borrador con autoría del usuario actual y sin historial heredado."""
+    clone = Chart(
+        dataset_id=obj.dataset_id,
+        name=f"{obj.name} (copia)",
+        description=obj.description,
+        renderer=obj.renderer,
+        chart_type=obj.chart_type,
+        chart_spec=obj.chart_spec,
+        status="draft",
+        created_by=user.sub,
+        created_by_email=user.email,
+    )
+    session.add(clone)
+    session.commit()
+    session.refresh(clone)
+    return clone
+
+
 def delete_chart(session: Session, obj: Chart) -> None:
     obj.status = "archived"
     session.add(obj)

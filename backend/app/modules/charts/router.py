@@ -144,6 +144,19 @@ def delete_chart(
     service.delete_chart(session, _get_or_404(session, chart_id))
 
 
+# ── Clonado (RF-11) ───────────────────────────────────────────────────────────
+
+
+@router.post("/{chart_id}/clone", response_model=ChartRead, status_code=status.HTTP_201_CREATED)
+def clone_chart(
+    chart_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    user: CurrentUser = Depends(require_permission("tablerillos.charts.create")),
+) -> Chart:
+    """Clona la gráfica como una nueva independiente (borrador, sin historial)."""
+    return service.clone_chart(session, _get_or_404(session, chart_id), user)
+
+
 # ── Versionado (RF-12) ────────────────────────────────────────────────────────
 
 
