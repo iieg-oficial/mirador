@@ -119,6 +119,55 @@ def test_parse_spec_bad_filter_operator_value() -> None:
     assert spec is None
 
 
+# ── Overrides controlados (Fase 5) ────────────────────────────────────────────
+
+
+def test_overrides_valid_sections() -> None:
+    spec = _parsed(
+        overrides={"legend": {"orient": "vertical", "right": 0}, "tooltip": {"show": False}}
+    )
+    assert spec.overrides is not None
+    assert spec.overrides["legend"]["orient"] == "vertical"
+
+
+def test_overrides_absent_is_none() -> None:
+    assert _parsed().overrides is None
+
+
+def test_overrides_section_not_allowed() -> None:
+    spec, errors = parse_spec(_raw_spec(overrides={"series": [{"type": "bar"}]}))
+    assert spec is None
+    assert any("no permitida" in e and "series" in e for e in errors)
+
+
+def test_overrides_section_must_be_object() -> None:
+    spec, errors = parse_spec(_raw_spec(overrides={"legend": "vertical"}))
+    assert spec is None
+    assert any("debe ser un objeto" in e for e in errors)
+
+
+def test_overrides_dangerous_key_rejected() -> None:
+    spec, errors = parse_spec(
+        _raw_spec(overrides={"legend": {"textStyle": {"__proto__": {"polluted": True}}}})
+    )
+    assert spec is None
+    assert any("__proto__" in e for e in errors)
+
+    spec, errors = parse_spec(
+        _raw_spec(overrides={"grid": {"data": [{"constructor": 1}]}})
+    )
+    assert spec is None
+    assert any("constructor" in e for e in errors)
+
+
+def test_overrides_size_limit() -> None:
+    spec, errors = parse_spec(
+        _raw_spec(overrides={"legend": {"data": ["x" * 100] * 200}})
+    )
+    assert spec is None
+    assert any("tamaño máximo" in e for e in errors)
+
+
 # ── Validación contra dataset ─────────────────────────────────────────────────
 
 

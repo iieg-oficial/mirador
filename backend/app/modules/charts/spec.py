@@ -7,10 +7,11 @@ frontend la convierte en EChartsOption; el backend genera desde ella la
 consulta segura (query_builder) — nunca se acepta SQL libre desde la gráfica.
 """
 
+import json
 import uuid
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, ValidationError, model_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
 
 from app.modules.datasets.models import Dataset
 from app.modules.datasets.schemas import Aggregation
@@ -110,6 +111,27 @@ class StyleSpec(BaseModel):
     legend_position: str = Field(default="top", max_length=20)
 
 
+# Secciones del EChartsOption que aceptan overrides (Fase 5). Todo lo demás
+# (series, dataset, toolbox, ...) lo genera únicamente el adaptador del frontend.
+OVERRIDABLE_SECTIONS = ("legend", "tooltip", "grid")
+
+# Claves que permitirían prototype pollution al hacer deep-merge en el navegador.
+_DANGEROUS_KEYS = {"__proto__", "constructor", "prototype"}
+
+_MAX_OVERRIDES_BYTES = 8_192
+
+
+def _assert_safe_keys(value: Any, path: str) -> None:
+    if isinstance(value, dict):
+        for key, sub in value.items():
+            if key in _DANGEROUS_KEYS:
+                raise ValueError(f"Clave no permitida en overrides: '{path}.{key}'.")
+            _assert_safe_keys(sub, f"{path}.{key}")
+    elif isinstance(value, list):
+        for i, item in enumerate(value):
+            _assert_safe_keys(item, f"{path}[{i}]")
+
+
 class ChartSpec(BaseModel):
     version: Literal["1.0"] = SPEC_VERSION
     data: DataSpec
@@ -117,6 +139,27 @@ class ChartSpec(BaseModel):
     encodings: EncodingsSpec = Field(default_factory=EncodingsSpec)
     interactions: InteractionsSpec = Field(default_factory=InteractionsSpec)
     style: StyleSpec = Field(default_factory=StyleSpec)
+    # Overrides controlados sobre el EChartsOption generado (Fase 5): JSON puro
+    # (sin funciones), solo secciones visuales de la whitelist.
+    overrides: dict[str, Any] | None = None
+
+    @field_validator("overrides")
+    @classmethod
+    def _check_overrides(cls, v: dict[str, Any] | None) -> dict[str, Any] | None:
+        if v is None:
+            return v
+        for section, content in v.items():
+            if section not in OVERRIDABLE_SECTIONS:
+                raise ValueError(
+                    f"Sección de overrides no permitida: '{section}' "
+                    f"(permitidas: {', '.join(OVERRIDABLE_SECTIONS)})."
+                )
+            if not isinstance(content, dict):
+                raise ValueError(f"overrides.{section} debe ser un objeto.")
+            _assert_safe_keys(content, section)
+        if len(json.dumps(v)) > _MAX_OVERRIDES_BYTES:
+            raise ValueError(f"overrides excede el tamaño máximo ({_MAX_OVERRIDES_BYTES} bytes).")
+        return v
 
 
 class ChartSpecValidation(BaseModel):
