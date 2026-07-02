@@ -8,10 +8,10 @@ sincronizan aquí en cada create/update.
 import hashlib
 import uuid
 
-from sqlmodel import Session, select
+from sqlmodel import Session, col, select
 
 from app.modules.auth.models import CurrentUser
-from app.modules.charts.models import Chart
+from app.modules.charts.models import Chart, ChartVersion
 from app.modules.charts.query_builder import build_query
 from app.modules.charts.schemas import ChartCreate, ChartPreviewResult, ChartUpdate
 from app.modules.connections.models import Connection
@@ -64,16 +64,86 @@ def create_chart(
     return obj
 
 
-def update_chart(session: Session, obj: Chart, data: ChartUpdate, dataset: Dataset) -> Chart:
-    """Actualiza la gráfica; `dataset` es el que referencia la spec nueva (o la vigente)."""
+def _snapshot_version(
+    session: Session, chart: Chart, user: CurrentUser, comment: str | None
+) -> None:
+    """Guarda el spec vigente de la gráfica como nueva versión del historial."""
+    last = session.exec(
+        select(ChartVersion.version_number)
+        .where(ChartVersion.chart_id == chart.id)
+        .order_by(col(ChartVersion.version_number).desc())
+        .limit(1)
+    ).first()
+    session.add(
+        ChartVersion(
+            chart_id=chart.id,
+            version_number=(last or 0) + 1,
+            chart_spec=chart.chart_spec,
+            change_comment=comment,
+            created_by=user.sub,
+            created_by_email=user.email,
+        )
+    )
+
+
+def update_chart(
+    session: Session, obj: Chart, data: ChartUpdate, dataset: Dataset, user: CurrentUser
+) -> Chart:
+    """Actualiza la gráfica; `dataset` es el que referencia la spec nueva (o la vigente).
+
+    Si el spec cambia, el spec ANTERIOR se preserva como versión (RF-12)
+    junto con el autor del cambio y su comentario opcional.
+    """
     if data.chart_spec is not None:
         _assert_spec_ok(data.chart_spec, dataset)
-        obj.chart_spec = data.chart_spec.model_dump(mode="json")
+        new_spec = data.chart_spec.model_dump(mode="json")
+        if new_spec != obj.chart_spec:
+            _snapshot_version(session, obj, user, data.change_comment)
+        obj.chart_spec = new_spec
         obj.dataset_id = data.chart_spec.data.dataset_id
         obj.chart_type = data.chart_spec.visual.chart_type
-    fields = data.model_dump(exclude_unset=True, exclude={"chart_spec"})
+    fields = data.model_dump(exclude_unset=True, exclude={"chart_spec", "change_comment"})
     for key, value in fields.items():
         setattr(obj, key, value)
+    session.add(obj)
+    session.commit()
+    session.refresh(obj)
+    return obj
+
+
+def list_versions(session: Session, chart_id: uuid.UUID) -> list[ChartVersion]:
+    return list(
+        session.exec(
+            select(ChartVersion)
+            .where(ChartVersion.chart_id == chart_id)
+            .order_by(col(ChartVersion.version_number).desc())
+        ).all()
+    )
+
+
+def restore_version(
+    session: Session, obj: Chart, version: ChartVersion, user: CurrentUser
+) -> Chart:
+    """Restaura el spec de una versión anterior (RF-12).
+
+    El spec vigente se snapshotea antes, así la restauración también queda en
+    el historial y es reversible. Se valida contra el dataset que referencia
+    la versión (pudo ser distinto al actual, y pudo cambiar de columnas).
+    """
+    spec, errors = parse_spec(version.chart_spec)
+    if spec is None:
+        raise ValueError(" | ".join(errors))
+    dataset = dataset_service.get_dataset(session, spec.data.dataset_id)
+    if dataset is None or dataset.status == DatasetStatus.archived:
+        raise ValueError("El dataset que referencia esa versión ya no existe.")
+    _assert_spec_ok(spec, dataset)
+
+    _snapshot_version(
+        session, obj, user, f"Antes de restaurar la versión {version.version_number}"
+    )
+    obj.chart_spec = version.chart_spec
+    obj.dataset_id = spec.data.dataset_id
+    obj.chart_type = spec.visual.chart_type
     session.add(obj)
     session.commit()
     session.refresh(obj)

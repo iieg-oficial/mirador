@@ -44,8 +44,23 @@ class ChartUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=120)
     description: str | None = None
     chart_spec: ChartSpec | None = None
+    # Comentario opcional que queda registrado en la versión (RF-12).
+    change_comment: str | None = Field(default=None, max_length=500)
     # `status` no se expone aquí: no hay flujo de publicación de gráficas todavía.
     # La máquina de estados llegará con la fase de dashboards.
+
+
+class ChartVersionRead(BaseModel):
+    id: uuid.UUID
+    chart_id: uuid.UUID
+    version_number: int
+    chart_spec: dict[str, Any]
+    change_comment: str | None
+    created_by: str | None
+    created_by_email: str | None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
 
 
 class ChartRead(BaseModel):

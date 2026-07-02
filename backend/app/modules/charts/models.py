@@ -7,7 +7,7 @@ FKs y listados; el service los mantiene sincronizados.
 
 import uuid
 
-from sqlalchemy import Column
+from sqlalchemy import Column, UniqueConstraint
 from sqlmodel import Field
 
 from app.core.db_types import JSONVariant
@@ -26,3 +26,16 @@ class Chart(UUIDAuditBase, table=True):
     chart_type: str = Field(max_length=40)
     chart_spec: dict = Field(sa_column=Column(JSONVariant, nullable=False))
     status: str = Field(default="draft", max_length=20)
+
+
+class ChartVersion(UUIDAuditBase, table=True):
+    """Snapshot del spec ANTERIOR de una gráfica, tomado en cada update que lo
+    cambia (RF-12). created_by registra quién hizo el cambio."""
+
+    __tablename__ = "chart_versions"
+    __table_args__ = (UniqueConstraint("chart_id", "version_number"),)
+
+    chart_id: uuid.UUID = Field(foreign_key="charts.id", index=True)
+    version_number: int
+    chart_spec: dict = Field(sa_column=Column(JSONVariant, nullable=False))
+    change_comment: str | None = Field(default=None, max_length=500)

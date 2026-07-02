@@ -10,7 +10,7 @@ from app.core.database import get_session
 from app.modules.auth.deps import require_permission
 from app.modules.auth.models import CurrentUser
 from app.modules.charts import service
-from app.modules.charts.models import Chart
+from app.modules.charts.models import Chart, ChartVersion
 from app.modules.charts.schemas import (
     ChartCreate,
     ChartPreviewResult,
@@ -18,6 +18,7 @@ from app.modules.charts.schemas import (
     ChartSpecPayload,
     ChartSpecPreviewRequest,
     ChartUpdate,
+    ChartVersionRead,
 )
 from app.modules.charts.spec import ChartSpecValidation
 from app.modules.connections import service as conn_service
@@ -118,7 +119,7 @@ def update_chart(
     chart_id: uuid.UUID,
     data: ChartUpdate,
     session: Session = Depends(get_session),
-    _: CurrentUser = Depends(require_permission("tablerillos.charts.update")),
+    user: CurrentUser = Depends(require_permission("tablerillos.charts.update")),
 ) -> Chart:
     obj = _get_or_404(session, chart_id)
     # Si la spec cambia puede apuntar a otro dataset; se valida contra ese.
@@ -129,7 +130,7 @@ def update_chart(
     if dataset is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dataset no encontrado")
     try:
-        return service.update_chart(session, obj, data, dataset)
+        return service.update_chart(session, obj, data, dataset, user)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
 
@@ -141,6 +142,38 @@ def delete_chart(
     _: CurrentUser = Depends(require_permission("tablerillos.charts.delete")),
 ) -> None:
     service.delete_chart(session, _get_or_404(session, chart_id))
+
+
+# ── Versionado (RF-12) ────────────────────────────────────────────────────────
+
+
+@router.get("/{chart_id}/versions", response_model=list[ChartVersionRead])
+def list_chart_versions(
+    chart_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    _: CurrentUser = Depends(require_permission("tablerillos.charts.view")),
+) -> list[ChartVersion]:
+    """Historial de versiones de la gráfica, de la más reciente a la más antigua."""
+    _get_or_404(session, chart_id)
+    return service.list_versions(session, chart_id)
+
+
+@router.post("/{chart_id}/restore/{version_id}", response_model=ChartRead)
+def restore_chart_version(
+    chart_id: uuid.UUID,
+    version_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    user: CurrentUser = Depends(require_permission("tablerillos.charts.update")),
+) -> Chart:
+    """Restaura el spec de una versión anterior (el vigente queda en el historial)."""
+    obj = _get_or_404(session, chart_id)
+    version = session.get(ChartVersion, version_id)
+    if version is None or version.chart_id != chart_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Versión no encontrada")
+    try:
+        return service.restore_version(session, obj, version, user)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
 
 
 # ── Preview ───────────────────────────────────────────────────────────────────
