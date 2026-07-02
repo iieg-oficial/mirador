@@ -37,7 +37,7 @@ Este módulo cubre el uso interno; el flujo de publicación (versiones inmutable
 
 ## Frontend
 
-`TablerosPage.tsx`: lista/creación + editor con `react-grid-layout` (12 columnas, mover/redimensionar). Cada gráfica del grid ejecuta su ChartSpec vía `POST /charts/preview` (agregación server-side + caché Redis compartido).
+`TablerosPage.tsx`: lista/creación + editor con `react-grid-layout` (12 columnas, mover/redimensionar). Cada gráfica del grid ejecuta su ChartSpec vía `POST /charts/preview` (agregación server-side + caché Redis compartido, y el mismo `ChartRenderer` que usa el builder — hereda exportación PNG/CSV si la gráfica tiene `interactions.download` activo, ver `docs/modules/charts.md`).
 
 **Filtros (RF-14):**
 - **Globales:** barra en el editor sobre la unión de columnas de los datasets usados; se persisten en `dashboard.global_filters`. Cada gráfica recibe solo los compatibles (el campo debe existir en su dataset).

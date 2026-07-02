@@ -70,10 +70,18 @@ class Dataset(UUIDAuditBase, table=True):
 
 ## Guardia SQL (`app/core/sql_guard.py`)
 
-`validate_sql(sql)` aplica dos capas de defensa antes de cualquier ejecución:
+`validate_sql(sql)` aplica defensa en capas antes de cualquier ejecución (detalle
+completo en `docs/security.md`):
 
-1. **Blacklist regex** — rechaza inmediatamente keywords destructivos: `INSERT`, `UPDATE`, `DELETE`, `DROP`, `ALTER`, `TRUNCATE`, `CREATE`, `GRANT`, `REVOKE`, `EXECUTE`, `CALL`, `COPY`, `VACUUM`, `LOCK`, `pg_read_file`, `pg_write_file`, `lo_import`, `lo_export`, entre otros.
-2. **Parser sqlglot** (`dialect="postgres"`) — parsea el SQL y verifica que el árbol AST sea exactamente un `SELECT` o un `WITH … SELECT` (CTEs). Cualquier otra raíz lanza `ValueError`.
+1. **Parser sqlglot** (`dialect="postgres"`) — un solo statement, raíz `SELECT` o
+   `WITH … SELECT` (CTEs); rechaza `SELECT ... INTO`.
+2. **Detección de escritura por AST** — recorre todo el árbol y rechaza cualquier nodo
+   `INSERT/UPDATE/DELETE/MERGE/DROP/CREATE/ALTER/TRUNCATE/GRANT/COPY` o `Command`
+   (cubre CTEs con escritura). A diferencia de una blacklist de keywords sobre texto
+   crudo, no rechaza SELECTs legítimos con columnas llamadas `owner`, `update`, etc.
+3. **Blacklist acotada a funciones peligrosas** (por patrón de llamada `func(`, no por
+   nombre de identificador): `pg_read_file`, `pg_write_file`, `pg_execute_server_program`,
+   `lo_import`, `lo_export`, `dblink`, entre otras.
 
 Límite adicional: máximo 10 000 caracteres por query.
 
@@ -100,9 +108,11 @@ Cada ejecución contra la BD externa sigue este flujo:
 
 | Archivo | Descripción |
 |---|---|
-| `DatasetsPage.tsx` | Página principal con dos tabs: "Playground SQL" y "Datasets guardados" |
-| `SqlPlayground.tsx` | Editor SQL con selector de conexión, selector de max_rows, tabla de resultados y barra de estadísticas |
+| `DatasetsPage.tsx` | Página principal: playground SQL inline (selector de conexión, editor, `ResultTable` con estadísticas y botón "Descargar CSV") + tab de datasets guardados |
 | `DatasetForm.tsx` | Modal para crear/editar dataset; genera slug automático desde el nombre |
+
+`SqlPlayground.tsx` existe en el árbol pero es código muerto (nadie lo importa): el
+playground real vive inline en `DatasetsPage.tsx`.
 
 ### Flujo de uso típico
 
@@ -154,6 +164,7 @@ Crea la tabla `datasets` con:
 - **Timeout:** `statement_timeout = 15 000 ms` en cada ejecución. Queries lentas se cortan antes de que saturen la BD.
 - **El SQL nunca se ejecuta en la BD interna de Tablerillos.** Se ejecuta únicamente en la BD externa referenciada por `connection_id`, con las credenciales cifradas con Fernet de esa conexión.
 - **Baja lógica:** los datasets archivados no se borran; conservan auditoría de quién los creó.
+- **Resiliencia:** si la BD externa no está disponible, `_connect` (punto único de conexión en `service.py`) traduce `psycopg.OperationalError` a **503** con mensaje claro, en vez de dejar que preview/playground/validate terminen en un 502 genérico de "error al ejecutar".
 
 ---
 

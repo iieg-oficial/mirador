@@ -154,17 +154,19 @@ Ver `docs/modules/dashboards.md` (dashboards internos exploratorios).
 ## Documentación y operaciones
 
 - [x] `CLAUDE.md` — guía para el asistente de código
-- [x] `docs/architecture.md` — arquitectura global
+- [x] `README.md` — presentación y arranque rápido
+- [x] `docs/architecture.md` — arquitectura global (dev y producción)
+- [x] `docs/development.md` — guía de desarrollo
 - [x] `docs/deployment.md` — guía de despliegue dev/prod
-- [x] `docs/modules/auth.md` — documentación del módulo auth
-- [x] `docs/modules/connections.md` — documentación del módulo connections
-- [x] `integracion.md` — contrato de integración con Minerva
+- [x] `docs/api.md` — índice de endpoints
+- [x] `docs/database.md` — modelo de datos
+- [x] `docs/security.md` — seguridad de SQL, cifrado, resiliencia
+- [x] `docs/auth-minerva.md` — contrato de integración OIDC con Minerva (reemplaza al
+      antiguo `integracion.md`, migrado y ya no existe como archivo suelto)
+- [x] `docs/modules/auth.md`, `connections.md`, `datasets.md`, `charts.md`, `dashboards.md`
 - [x] `manifest.minerva.yml` — permisos y roles declarados
-- [x] `docs/modules/datasets.md`
-- [x] `docs/modules/charts.md`
-- [x] `docs/modules/dashboards.md`
 - [x] Guía de despliegue productivo (compose prod, nginx, TLS aguas arriba, respaldos)
+- [x] CI (GitHub Actions: ruff + mypy + pytest, build del frontend)
 - [ ] `docs/modules/public.md` — pospuesto (lab interno)
 - [ ] Documentación de API pública (endpoints y contratos) — pospuesto
-- [x] CI (GitHub Actions: ruff + mypy + pytest, build del frontend)
 - [ ] Runbook de rotación de `SECRET_ENCRYPTION_KEY`

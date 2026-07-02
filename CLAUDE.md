@@ -19,16 +19,25 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   componentes React, no ECharts). Ver `docs/modules/charts.md`.
 - Dashboards internos exploratorios (grid react-grid-layout, widgets de texto,
   filtros globales y locales). Ver `docs/modules/dashboards.md`.
+- Exportación: descarga CSV (client-side, desde las filas ya cargadas en preview) y PNG
+  de gráficas (toolbox `saveAsImage` de ECharts, gateado por `interactions.download`).
+- Producción: `infra/docker-compose.prod.yml` (nginx como único punto de entrada +
+  proxy `/api`, build estático del frontend, backend multi-worker), CI en GitHub
+  Actions (`.github/workflows/ci.yml`). Ver `docs/deployment.md`.
+- Resiliencia: BD externa o Redis caídos responden 503 con mensaje claro (no 500/502
+  genérico); `/health` reporta el estado de la BD de metadata y de Redis por separado.
 
-**Pendiente:** publicación de dashboards (snapshot inmutable), API pública, municipios, exportación, auditoría. **Mapas geográficos: descartados** (los cubre otro proyecto).
+**Pendiente:** publicación de dashboards (snapshot inmutable), API pública, municipios,
+auditoría (`query_execution_logs` — el usuario decidió dejarla fuera del ciclo de
+producción de 2026-07). **Mapas geográficos: descartados** (los cubre otro proyecto).
 
 La especificación de lo que se va a construir es autoritativa y vive en:
-- **`tablerillos.md`** — manual técnico completo (módulos, modelo de datos, API,
-  estados, decisiones de diseño). Es la fuente principal al implementar cualquier módulo.
 - **`docs/`** — arquitectura, despliegue, documentación por módulo, checklist v1.0.
-- **`integracion.md`** — contrato de integración con Minerva (el IdP externo).
+  (Los manuales originales `tablerillos.md`/`integracion.md` se migraron aquí y ya no
+  existen como archivos sueltos.)
+- **`manifest.minerva.yml`** — permisos y roles declarados a Minerva.
 
-Al implementar, **consulta el manual antes de inventar** estructuras, nombres de
+Al implementar, **consulta `docs/` antes de inventar** estructuras, nombres de
 permisos, estados o endpoints; ya están especificados.
 
 ## Comandos
@@ -44,6 +53,9 @@ set -a && . ./.env && set +a
 docker compose -f infra/docker-compose.yml up --build
 # backend :8000 (/health, /docs)  ·  frontend :5173
 ```
+
+Producción usa `infra/docker-compose.prod.yml` (nginx único punto de entrada, build
+estático del frontend, backend multi-worker sin reload); ver `docs/deployment.md`.
 
 ### Backend (Python 3.12+, ejecutar dentro de `backend/`)
 Los comandos de Python corren en el entorno **conda `tab`** (`conda run -n tab <cmd>` o
@@ -61,24 +73,26 @@ conda run -n tab alembic upgrade head      # migraciones
 ### Frontend (ejecutar dentro de `frontend/`)
 ```bash
 npm run dev      # Vite dev server
-npm run build    # tsc -b && vite build
-npm run lint     # eslint . --ext ts,tsx
-npm run test     # vitest
+npm run build    # tsc -b && vite build (type-check estricto; verificación principal)
+npm run lint     # eslint . --ext ts,tsx — el paquete eslint NO está instalado aún
+                 # (gap conocido); `npm run build` es la verificación real hoy
+npm run test     # vitest — sin tests todavía (0 specs); no forma parte de CI
 ```
 
 ## Arquitectura
 
 ### Cadena de datos (concepto central)
 ```
-Connection → Dataset → Chart → Dashboard → DashboardVersion → DashboardPublication
+Connection → Dataset → Chart → Dashboard → [DashboardVersion → DashboardPublication]
 ```
 Cada eslabón se separa para poder reutilizar: un dataset alimenta varias gráficas, una
 gráfica entra en varios dashboards. **Los dashboards se guardan como configuración
-(JSON), no como HTML.** La versión publicada es un **snapshot inmutable**; la API
-pública sirve solo desde ese snapshot.
-
-Estados del dashboard: `borrador → in_review → aprobado → publicado → archivado`
-(ver el flujo de publicación en el manual).
+(JSON), no como HTML.** Los dos últimos eslabones (versión inmutable + publicación) son
+el **objetivo a futuro** cuando se retome la publicación pública; hoy `Dashboard` solo
+tiene estados `draft/archived` (tableros exploratorios internos, ver
+`docs/modules/dashboards.md`). El flujo de estados
+`borrador → in_review → aprobado → publicado → archivado` documentado en
+`docs/checklist.md` es el diseño planeado, no lo implementado.
 
 ### Autenticación: BFF contra Minerva (OBLIGATORIO, no hay identidad local)
 - **Minerva es inamovible.** Es la única fuente de login, usuarios, roles y permisos —
@@ -114,34 +128,57 @@ Estados del dashboard: `borrador → in_review → aprobado → publicado → ar
 - **Dual-URL hacia Minerva** (corre en el host, fuera del compose): el navegador usa
   `MINERVA_PUBLIC_ISSUER_URL` (`localhost:9000`); el backend usa `MINERVA_ISSUER_URL`
   (`host.docker.internal:9000`). No los mezcles.
-- **Rutas públicas** (`/api/public/*`) no llevan ningún dependency de Minerva: acceso sin
-  login para los visitantes.
+- **Rutas públicas** (`/api/public/*`): diseño objetivo para cuando se retome la
+  publicación (sin ningún dependency de Minerva, acceso sin login). El módulo
+  `app/modules/public/` es hoy un placeholder vacío — no existe todavía.
 
 ### Seguridad de SQL en datasets (defensa en capas)
-Los datasets se crean desde SQL escrito por administradores. La validación irá en
+Los datasets se crean desde SQL escrito por administradores. La validación vive en
 `backend/app/core/sql_guard.py`:
-1. Parser `sqlglot`: un solo statement, raíz `SELECT`/`WITH ... SELECT`.
-2. Lista negra de keywords como red de seguridad.
+1. Parser `sqlglot`: un solo statement, raíz `SELECT`/`WITH ... SELECT` (rechazo por AST,
+   no por regex sobre texto: no falsos positivos con columnas llamadas `update`, etc.).
+2. Blacklist acotada a funciones peligrosas (`pg_read_file`, `dblink`, …) como red
+   secundaria.
 3. Parámetros nombrados (`:param`), nunca concatenación.
 4. Usuario PostgreSQL **read-only** por conexión + transacción `READ ONLY`.
 5. `statement_timeout` y límite de filas.
-6. Auditoría en `query_execution_logs`.
+6. Auditoría en `query_execution_logs`: **pendiente** (decisión del usuario de dejarla
+   fuera del ciclo de producción de 2026-07; ver `docs/checklist.md`).
 
 Credenciales de conexión cifradas con **Fernet** (`SECRET_ENCRYPTION_KEY`); nunca en
 texto plano ni serializadas al frontend.
 
-### Frontend
-SPA React/TS con dos áreas: panel admin (`/admin`) y vistas públicas (`/`). En dev, Vite
-proxya `/api` al backend para que la cookie de sesión BFF funcione sin CORS (ver
-`frontend/vite.config.ts`). Organizado por feature en `src/features/*`. Stack clave:
-TanStack Query (datos), Zustand (estado), React-Grid-Layout (canvas de dashboards),
-**Apache ECharts 5** (gráficas), DOMPurify (sanitización de Markdown público).
+### Resiliencia ante dependencias caídas
+Si la BD externa de una `Connection` o Redis no están disponibles, el sistema responde
+**503 con mensaje claro**, no un 500/502 genérico:
+- `datasets/service.py`: el `connect()` a la BD externa pasa por un único punto
+  (`_connect`) que traduce `psycopg.OperationalError` a 503. Cubre preview, playground,
+  validación y las gráficas (que reusan `run_query`).
+- `auth/session.py`: `SessionStore` captura `RedisError` en `get/set/delete` → 503.
+- `GET /health` reporta el estado de la BD de metadata y de Redis por separado
+  (`{"components": {"database", "redis"}}`), 503 si alguno falla.
 
-Las gráficas se renderizan con **Apache ECharts** (`echarts` v5). Una gráfica se guarda
-como especificación JSON independiente del renderer (`renderer: "echarts"`, `chart_type`,
-`field_mapping`, `visual_config`); el componente de render transforma esa spec en una
-opción de ECharts y la monta vía `echarts.init()`. ECharts incluye sus propios tipos
-TypeScript — no se necesita `@types/echarts`.
+Si agregas un nuevo punto de acceso a una BD externa o a Redis, sigue este mismo patrón
+(un punto único de conexión que traduce el error de infraestructura a 503) en vez de
+dejar que burbujee al handler global de excepciones.
+
+### Frontend
+SPA React/TS con dos áreas: panel admin (`/admin`, donde vive todo el laboratorio de
+datos) y una landing pública (`/`, sin dashboards publicados todavía). En dev, Vite
+proxya `/api` al backend para que la cookie de sesión BFF funcione sin CORS (ver
+`frontend/vite.config.ts`); en producción esto lo resuelve el nginx del stack
+(same-origin, sin proxy de Vite). Organizado por feature en `src/features/*`. Stack
+clave: TanStack Query (datos), Zustand (estado), React-Grid-Layout (canvas de
+dashboards), **Apache ECharts 5** (gráficas). `dompurify` está instalado mirando a la
+sanitización de Markdown público, pero **no se usa todavía** (no hay contenido Markdown
+público que sanitizar hasta que se retome la publicación).
+
+Las gráficas se guardan como **ChartSpec 1.0**, una spec JSON versionada e independiente
+del renderer (`version/data/visual/encodings/interactions/style/overrides` — ver
+`docs/modules/charts.md`, NO `field_mapping`/`visual_config`, terminología de un diseño
+anterior ya reemplazado). El componente `ChartRenderer.tsx` transforma esa spec en una
+opción de **Apache ECharts** (`echarts` v5) y la monta vía `echarts.init()`; ECharts
+incluye sus propios tipos TypeScript, no se necesita `@types/echarts`.
 
 ## Convenciones
 

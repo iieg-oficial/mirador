@@ -20,7 +20,7 @@ No existe identidad local: no hay tablas de usuarios, contraseñas ni roles prop
 |---|---|
 | `models.py` | `CurrentUser` — modelo Pydantic con los claims del usuario autenticado |
 | `oidc.py` | Helpers del flujo OIDC: PKCE, canje de código, revocación |
-| `session.py` | `SessionStore` — wrapper sobre Redis para sesiones y estado OIDC |
+| `session.py` | `SessionStore` — wrapper sobre Redis para sesiones y estado OIDC; traduce `RedisError` a 503 (Redis caído no debe ser un 500) |
 | `minerva.py` | Integración con el `minerva-sdk`: validación de token, resolución de permisos |
 | `deps.py` | Dependencies de FastAPI: `get_current_user`, `require_app_access`, `require_permission` |
 | `router.py` | Endpoints: `/login`, `/callback`, `/logout`, `/me` |

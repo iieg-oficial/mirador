@@ -65,6 +65,7 @@ Frontend: `GraficasPage.tsx` (builder visual con drag-and-drop, filtros, agregac
 - Reglas por tipo (pie/treemap 1 dim + 1 métrica, kpi métrica agregada, etc.) en `spec.py`.
 - **`overrides` (opcional):** personalización controlada del EChartsOption generado. Whitelist de secciones (`legend`/`tooltip`/`grid`), cada valor un objeto JSON puro; el backend rechaza otras secciones, claves peligrosas (`__proto__`/`constructor`/`prototype`, anti prototype-pollution) y payloads > 8 KB. El frontend hace deep-merge (`applyOverrides` en `ChartRenderer.tsx`) sobre el option antes de `setOption`; el editor avanzado muestra el resultado ya fusionado. Sin funciones ni código: los `formatter` string de ECharts son plantillas.
 - **Temas (`style.theme`):** `institutional` (default) o `default`. El tema institucional (paleta morada/naranja IIEG-Jalisco) se registra en `frontend/src/features/charts/themes.ts` y se pasa a `echarts.init`; `default` usa el tema base de ECharts.
+- **Exportación (`interactions.download`):** cuando es `true`, activa el toolbox `saveAsImage` de ECharts (descarga PNG) y muestra el botón "Descargar CSV" (`TableRenderer` y el preview del builder), gateado por el mismo flag. El toggle vive en el panel de configuración visual del builder ("Permitir descargar como imagen (PNG)"). El CSV es 100% client-side (`frontend/src/lib/csv.ts`, RFC 4180 + BOM) desde las filas ya cargadas — no hay endpoint de exportación.
 
 ## Generación segura de consulta
 
