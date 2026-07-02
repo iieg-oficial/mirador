@@ -9,8 +9,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Auth contra Minerva (OIDC BFF completo, gate de rol, `minerva-sdk`)
 - Conexiones a BD (CRUD, prueba, explorador de esquema + UI completa)
 - Shell del frontend admin (layout, routing, AuthGuard, AccessDenied)
+- Datasets (SQL crudo validado con `sql_guard`, columnas con metadata semántica,
+  preview/playground, caché Redis)
+- Gráficas como **ChartSpec 1.0** (spec JSON versionada e independiente del
+  renderer): constructor visual drag-and-drop, editor avanzado JSON (CodeMirror),
+  generación segura de consultas desde la spec (agregación server-side),
+  validación/preview, versionado con restauración, clonado, estados. 9 tipos:
+  line/bar/pie/scatter/candlestick/boxplot/treemap + table/kpi (estos dos como
+  componentes React, no ECharts). Ver `docs/modules/charts.md`.
+- Dashboards internos exploratorios (grid react-grid-layout, widgets de texto,
+  filtros globales y locales). Ver `docs/modules/dashboards.md`.
 
-**Pendiente:** datasets, sql_guard, gráficas (ECharts), dashboards, publicación, filtros, API pública, municipios, exportación, auditoría.
+**Pendiente:** publicación de dashboards (snapshot inmutable), API pública, municipios, exportación, auditoría. **Mapas geográficos: descartados** (los cubre otro proyecto).
 
 La especificación de lo que se va a construir es autoritativa y vive en:
 - **`tablerillos.md`** — manual técnico completo (módulos, modelo de datos, API,
