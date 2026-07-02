@@ -17,8 +17,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   validación/preview, versionado con restauración, clonado, estados. 9 tipos:
   line/bar/pie/scatter/candlestick/boxplot/treemap + table/kpi (estos dos como
   componentes React, no ECharts). Ver `docs/modules/charts.md`.
-- Dashboards internos exploratorios (grid react-grid-layout, widgets de texto,
-  filtros globales y locales). Ver `docs/modules/dashboards.md`.
 - Exportación: descarga CSV (client-side, desde las filas ya cargadas en preview) y PNG
   de gráficas (toolbox `saveAsImage` de ECharts, gateado por `interactions.download`).
 - Producción: `infra/docker-compose.prod.yml` (nginx como único punto de entrada +
@@ -30,6 +28,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **Pendiente:** publicación de dashboards (snapshot inmutable), API pública, municipios,
 auditoría (`query_execution_logs` — el usuario decidió dejarla fuera del ciclo de
 producción de 2026-07). **Mapas geográficos: descartados** (los cubre otro proyecto).
+**Tableros/dashboards internos: retirados en 0.1.1** (bugs y alcance sin pulir); el
+módulo `dashboards` (backend y frontend) se eliminó. La cadena de datos conserva
+`Dashboard` como eslabón de diseño futuro para cuando se retome la publicación pública,
+pero hoy no existe ninguna implementación de tableros.
 
 La especificación de lo que se va a construir es autoritativa y vive en:
 - **`docs/`** — arquitectura, despliegue, documentación por módulo, checklist v1.0.
@@ -88,9 +90,8 @@ Connection → Dataset → Chart → Dashboard → [DashboardVersion → Dashboa
 Cada eslabón se separa para poder reutilizar: un dataset alimenta varias gráficas, una
 gráfica entra en varios dashboards. **Los dashboards se guardan como configuración
 (JSON), no como HTML.** Los dos últimos eslabones (versión inmutable + publicación) son
-el **objetivo a futuro** cuando se retome la publicación pública; hoy `Dashboard` solo
-tiene estados `draft/archived` (tableros exploratorios internos, ver
-`docs/modules/dashboards.md`). El flujo de estados
+el **objetivo a futuro** cuando se retome la publicación pública; el módulo de tableros
+internos se **retiró en 0.1.1** (no existe implementación de `Dashboard` hoy). El flujo de estados
 `borrador → in_review → aprobado → publicado → archivado` documentado en
 `docs/checklist.md` es el diseño planeado, no lo implementado.
 
@@ -168,8 +169,8 @@ datos) y una landing pública (`/`, sin dashboards publicados todavía). En dev,
 proxya `/api` al backend para que la cookie de sesión BFF funcione sin CORS (ver
 `frontend/vite.config.ts`); en producción esto lo resuelve el nginx del stack
 (same-origin, sin proxy de Vite). Organizado por feature en `src/features/*`. Stack
-clave: TanStack Query (datos), Zustand (estado), React-Grid-Layout (canvas de
-dashboards), **Apache ECharts 5** (gráficas). `dompurify` está instalado mirando a la
+clave: TanStack Query (datos), Zustand (estado), **Apache ECharts 5** (gráficas).
+`dompurify` está instalado mirando a la
 sanitización de Markdown público, pero **no se usa todavía** (no hay contenido Markdown
 público que sanitizar hasta que se retome la publicación).
 

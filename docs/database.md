@@ -18,8 +18,6 @@
 | `datasets` | `0002_datasets.py`, `0004_dataset_slug_partial_unique.py` | datasets | `sql_query` TEXT, `columns_schema`/`parameters_schema` JSONB, slug único parcial (excluye archivados) |
 | `charts` | `0003_charts.py`, `0006_chart_spec.py` | charts | `chart_spec` JSONB (ChartSpec 1.0 canónica), `dataset_id`/`chart_type` denormalizados |
 | `chart_versions` | `0007_chart_versions.py` | charts | Historial de `chart_spec` con autor y comentario opcional |
-| `dashboards` | `0008_dashboards.py` | dashboards | `status` (`draft`/`archived`), `global_filters` JSONB |
-| `dashboard_items` | `0008_dashboards.py` | dashboards | FK a `dashboards` (cascade) y a `charts` (nullable), `position_config`/`local_config` JSONB |
 
 Detalle de columnas en `docs/modules/<módulo>.md`.
 
@@ -36,6 +34,9 @@ municipios               # catálogo + geometría PostGIS (módulo municipios, p
 export_jobs              # cola de exportación asíncrona (la exportación actual es
                           # 100% client-side, sin tabla ni job)
 ```
+
+Las tablas `dashboards` y `dashboard_items` existieron entre `0008_dashboards.py` y
+`0009_drop_dashboards.py`: el módulo de tableros internos se retiró en 0.1.1.
 
 ## Migraciones
 

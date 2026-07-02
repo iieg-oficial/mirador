@@ -97,14 +97,13 @@ Ver `docs/modules/charts.md`.
 
 ---
 
-## Dashboards (Módulo: dashboards)
+## Dashboards (Módulo: dashboards) — RETIRADO en 0.1.1
 
-Ver `docs/modules/dashboards.md` (dashboards internos exploratorios).
+El módulo de tableros internos (backend + frontend) se **eliminó en 0.1.1** por bugs y
+alcance sin pulir. La migración `0009_drop_dashboards.py` borra las tablas `dashboards`
+y `dashboard_items` que había creado `0008_dashboards.py`. `Dashboard` sigue vivo solo
+como eslabón de diseño futuro en la cadena de datos (publicación pública, pospuesta).
 
-- [x] Modelo de datos y migración (`0008_dashboards.py`)
-- [x] CRUD de dashboards + tests
-- [x] Frontend — canvas con React Grid Layout (drag & drop de gráficas)
-- [x] Frontend — widgets de texto, filtros globales y locales
 - [ ] Flujo de publicación (submit-review/approve/publish) — pospuesto (lab interno)
 - [ ] `DashboardVersion` — snapshot JSON inmutable — pospuesto (lab interno)
 
@@ -163,7 +162,7 @@ Ver `docs/modules/dashboards.md` (dashboards internos exploratorios).
 - [x] `docs/security.md` — seguridad de SQL, cifrado, resiliencia
 - [x] `docs/auth-minerva.md` — contrato de integración OIDC con Minerva (reemplaza al
       antiguo `integracion.md`, migrado y ya no existe como archivo suelto)
-- [x] `docs/modules/auth.md`, `connections.md`, `datasets.md`, `charts.md`, `dashboards.md`
+- [x] `docs/modules/auth.md`, `connections.md`, `datasets.md`, `charts.md`
 - [x] `manifest.minerva.yml` — permisos y roles declarados
 - [x] Guía de despliegue productivo (compose prod, nginx, TLS aguas arriba, respaldos)
 - [x] CI (GitHub Actions: ruff + mypy + pytest, build del frontend)
