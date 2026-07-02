@@ -139,7 +139,73 @@ npm run test     # vitest
 
 ## Producción
 
-> Esta sección describe el objetivo de despliegue. La automatización CI/CD está pendiente.
+El stack de producción vive en **`infra/docker-compose.prod.yml`** y expone un único
+puerto (`HTTP_PORT`, default 8080): un nginx que sirve el SPA compilado y hace proxy de
+`/api` al backend. Así todo es **same-origin** y la cookie BFF `tb_session` funciona sin
+CORS.
+
+```
+proxy institucional (TLS) ──► nginx :HTTP_PORT ──► estáticos del SPA
+                                   └── /api ────► backend :8000 (uvicorn, 4 workers)
+                                                     └── postgres / redis (red interna)
+```
+
+### Despliegue paso a paso
+
+```bash
+# 1. .env de producción (ver .env.example; config.py corta el arranque si
+#    quedan placeholders con ENVIRONMENT=production)
+cp .env.example .env
+#    ENVIRONMENT=production, DEBUG=false, SECRET_ENCRYPTION_KEY real,
+#    POSTGRES_PASSWORD real, URLs https de Minerva y
+#    MINERVA_REDIRECT_URI=https://<dominio>/api/auth/callback
+
+# 2. PAT para el minerva-sdk (secreto de BuildKit, se lee del shell)
+set -a && . ./.env && set +a
+export GITHUB_TOKEN=ghp_...
+
+# 3. Levantar (las migraciones corren automáticamente al arrancar)
+docker compose -f infra/docker-compose.prod.yml up -d --build
+
+# 4. Verificar
+curl http://localhost:${HTTP_PORT:-8080}/health
+# → {"status":"ok","components":{"database":"ok","redis":"ok"}}
+```
+
+### TLS
+
+El nginx del stack escucha **HTTP plano**: la terminación TLS la hace el proxy
+institucional aguas arriba, que debe reenviar `X-Forwarded-Proto: https` (el nginx del
+stack ya propaga ese header al backend, y uvicorn corre con `--proxy-headers`). La cookie
+sale `Secure` por `ENVIRONMENT=production`, no por el esquema local.
+
+### Actualizar
+
+```bash
+git pull
+set -a && . ./.env && set +a
+docker compose -f infra/docker-compose.prod.yml up -d --build
+```
+
+### Respaldos
+
+Lo único con estado es el volumen `postgres_data` (metadata: conexiones cifradas,
+datasets, gráficas, dashboards) — respaldar con `pg_dump` programado:
+
+```bash
+docker compose -f infra/docker-compose.prod.yml exec postgres \
+  pg_dump -U tablerillos tablerillos > backup_$(date +%F).sql
+```
+
+Redis solo guarda sesiones y caché: se puede perder sin daño (los usuarios vuelven a
+iniciar sesión). El `.env` (en particular `SECRET_ENCRYPTION_KEY`) debe respaldarse en el
+secret manager: sin la clave, las contraseñas de las conexiones son irrecuperables.
+
+### Manifiesto en Minerva productiva
+
+Importar `manifest.minerva.yml` contra la Minerva de producción (mismo procedimiento que
+en dev, con el token de admin de esa instancia) **antes** del primer login, para que los
+permisos `tablerillos.*` existan.
 
 ### Variables de entorno adicionales para producción
 

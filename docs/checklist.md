@@ -1,6 +1,8 @@
 # Checklist v1.0 — Tablerillos
 
-Estado de módulos para la primera versión pública.
+Estado de módulos. En julio 2026 el proyecto pivotó a **laboratorio de datos
+interno**: la publicación pública (API pública, municipios, snapshot de
+publicación) queda pospuesta hasta que se retome ese alcance.
 
 ---
 
@@ -10,7 +12,8 @@ Estado de módulos para la primera versión pública.
 - [x] **docker-compose** — postgres (PostGIS), redis, backend, frontend
 - [x] **Dockerfile backend** — instalación del `minerva-sdk` privado vía BuildKit secret
 - [x] **Migraciones automáticas** — `alembic upgrade head` al arrancar el backend
-- [x] **Health check** — `GET /health`
+- [x] **Health check** — `GET /health` con componentes (metadata DB + Redis)
+- [x] **Compose de producción** — `infra/docker-compose.prod.yml` (nginx + build estático + uvicorn multi-worker)
 - [x] **Configuración centralizada** — `app/core/config.py` (pydantic-settings)
 - [x] **Cifrado Fernet** — `app/core/security.py` para credenciales de conexión
 - [x] **Base de modelos** — `UUIDAuditBase` con UUID, timestamps, autoría Minerva
@@ -71,47 +74,39 @@ Estado de módulos para la primera versión pública.
 - [x] Frontend — formulario modal para guardar como dataset
 - [x] Frontend — lista de datasets guardados con acciones (validar, editar, archivar)
 - [x] **Documentación** — `docs/modules/datasets.md`
+- [x] Tests de sql_guard y ejecución (`test_sql_guard.py`, `test_run_query.py`, `test_datasets_api.py`, `test_datasets_service.py`)
+- [x] 503 claro cuando la BD externa no está disponible
 - [ ] `query_execution_logs` — auditoría de cada ejecución (pendiente)
-- [ ] Tests de sql_guard y ejecución (pendiente)
 
 ---
 
 ## Gráficas (Módulo: charts)
 
-- [ ] Modelo de datos (`Chart` con spec JSON)
-- [ ] Migración Alembic
-- [ ] CRUD de gráficas
-- [ ] Spec JSON de gráfica (`renderer`, `chart_type`, `field_mapping`, `visual_config`)
-- [ ] Endpoint de previsualización (ejecuta el dataset + devuelve datos)
-- [ ] Tests backend
-- [ ] Frontend — formulario de gráfica
-- [ ] Frontend — render con Apache ECharts (bar, line, pie, scatter)
-- [ ] Frontend — previsualización en tiempo real
+Ver `docs/modules/charts.md`.
+
+- [x] Modelo de datos (`Chart` con ChartSpec 1.0 JSONB + `ChartVersion`)
+- [x] Migraciones Alembic
+- [x] CRUD, validación, preview por spec (con caché), clonado, estados
+- [x] ChartSpec 1.0 (spec canónica independiente del renderer) + query builder seguro
+- [x] Versionado con restauración
+- [x] Overrides controlados (legend/tooltip/grid) y temas ECharts (paleta IIEG)
+- [x] Tests backend (`test_chart_spec.py`, `test_chart_query_builder.py`, `test_charts.py`, `test_chart_versions.py`)
+- [x] Frontend — builder visual drag-and-drop + editor JSON (CodeMirror)
+- [x] Frontend — render ECharts (9 tipos; table/kpi como componentes React)
+- [x] Frontend — previsualización, historial, descarga PNG (toolbox)
 
 ---
 
 ## Dashboards (Módulo: dashboards)
 
-- [ ] Modelo de datos (`Dashboard`, `DashboardItem`, `DashboardVersion`)
-- [ ] Migración Alembic
-- [ ] CRUD de dashboards
-- [ ] Flujo de estados: `borrador → in_review → aprobado → publicado → archivado`
-- [ ] `POST /submit-review` — enviar a revisión
-- [ ] `POST /approve` — aprobar (permiso `dashboards.approve`)
-- [ ] `POST /publish` — publicar snapshot inmutable (permiso `dashboards.authorize`)
-- [ ] Versionado — `DashboardVersion` como snapshot JSON inmutable
-- [ ] Frontend — canvas con React Grid Layout (drag & drop de gráficas)
-- [ ] Frontend — panel de propiedades por ítem
-- [ ] Frontend — flujo de publicación con estado visual
+Ver `docs/modules/dashboards.md` (dashboards internos exploratorios).
 
----
-
-## Filtros globales (Módulo: filters)
-
-- [ ] Modelo de datos (`Filter`, `FilterValue`)
-- [ ] Filtros parametrizados que afectan múltiples datasets
-- [ ] Filtro de municipio (principal)
-- [ ] Frontend — barra de filtros en dashboards
+- [x] Modelo de datos y migración (`0008_dashboards.py`)
+- [x] CRUD de dashboards + tests
+- [x] Frontend — canvas con React Grid Layout (drag & drop de gráficas)
+- [x] Frontend — widgets de texto, filtros globales y locales
+- [ ] Flujo de publicación (submit-review/approve/publish) — pospuesto (lab interno)
+- [ ] `DashboardVersion` — snapshot JSON inmutable — pospuesto (lab interno)
 
 ---
 
@@ -139,12 +134,12 @@ Estado de módulos para la primera versión pública.
 
 ---
 
-## Exportación (Módulo: exports)
+## Exportación
 
-- [ ] Exportar gráfica individual como PNG/SVG
-- [ ] Exportar dashboard completo como PDF (Playwright headless)
-- [ ] Sistema de jobs asíncronos (cola + worker)
-- [ ] `GET /api/exports/{id}` — estado del job y descarga del archivo
+- [x] Exportar gráfica como PNG (toolbox saveAsImage de ECharts, gateado por `interactions.download`)
+- [x] Descargar CSV desde previews de datasets y gráficas (client-side, filas ya capadas a max_rows)
+- [ ] Exportar dashboard completo como PDF (Playwright headless) — pospuesto
+- [ ] Sistema de jobs asíncronos (cola + worker) — pospuesto
 
 ---
 
@@ -165,10 +160,11 @@ Estado de módulos para la primera versión pública.
 - [x] `docs/modules/connections.md` — documentación del módulo connections
 - [x] `integracion.md` — contrato de integración con Minerva
 - [x] `manifest.minerva.yml` — permisos y roles declarados
-- [ ] `docs/modules/datasets.md`
-- [ ] `docs/modules/charts.md`
-- [ ] `docs/modules/dashboards.md`
-- [ ] `docs/modules/public.md`
-- [ ] Documentación de API pública (endpoints y contratos)
-- [ ] CI/CD pipeline (build, test, deploy)
-- [ ] Runbook de operaciones (rotación de claves, backups, migraciones)
+- [x] `docs/modules/datasets.md`
+- [x] `docs/modules/charts.md`
+- [x] `docs/modules/dashboards.md`
+- [x] Guía de despliegue productivo (compose prod, nginx, TLS aguas arriba, respaldos)
+- [ ] `docs/modules/public.md` — pospuesto (lab interno)
+- [ ] Documentación de API pública (endpoints y contratos) — pospuesto
+- [ ] CI/CD pipeline (build, test)
+- [ ] Runbook de rotación de `SECRET_ENCRYPTION_KEY`
