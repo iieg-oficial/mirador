@@ -32,7 +32,9 @@ services:
   redis:
     image: redis:7-alpine
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      # Default 6380 en el host para no chocar con el Redis local de Minerva
+      # (6379). Dentro de compose el backend siempre usa redis:6379.
+      - "${REDIS_PORT:-6380}:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -45,6 +47,11 @@ services:
     build:
       context: ../backend
       dockerfile: Dockerfile
+      # PAT para instalar el minerva-sdk (repo privado, dependencia OBLIGATORIA).
+      # Se toma de GITHUB_TOKEN del ENTORNO del shell (no del .env): exporta antes
+      # de construir con  set -a && . ./.env && set +a. Si va vacío el build falla.
+      secrets:
+        - github_token
     env_file:
       - ../.env
     environment:
@@ -62,14 +69,20 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - ../backend:/app
-    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    command: >
+      bash -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
 
   frontend:
     build:
       context: ../frontend
       dockerfile: Dockerfile
+      target: dev
     env_file:
       - ../.env
+    environment:
+      # Dentro de compose el proxy de Vite debe apuntar al servicio backend,
+      # no a localhost (que dentro del contenedor es el propio frontend).
+      VITE_BACKEND_URL: "http://backend:8000"
     ports:
       - "${FRONTEND_PORT:-5173}:5173"
     depends_on:
@@ -82,3 +95,10 @@ services:
 volumes:
   postgres_data:
   redis_data:
+
+# Secreto de build con el PAT de GitHub para instalar el minerva-sdk privado
+# (obligatorio). Su valor se lee de la variable de entorno GITHUB_TOKEN del shell
+# (no del .env): expórtala antes de construir. El build falla si va vacía.
+secrets:
+  github_token:
+    environment: GITHUB_TOKEN
