@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { listConexiones } from '@/features/connections/api'
+import { downloadCsv } from '@/lib/csv'
 import { listDatasets, deleteDataset, runPlayground } from './api'
 import { DatasetForm } from './DatasetForm'
 import type { Dataset, DatasetStatus, PreviewResult } from '@/types/datasets'
@@ -93,6 +94,19 @@ function ResultTable({ result }: { result: PreviewResult }) {
           Mostrando {rows.length}
           {total_rows != null ? ` de ${total_rows.toLocaleString('es-MX')} registros` : ' registros'}
         </span>
+        <button
+          onClick={() =>
+            downloadCsv(
+              'resultado_consulta',
+              columns.map((c) => c.name),
+              rows,
+            )
+          }
+          disabled={rows.length === 0}
+          className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-40"
+        >
+          Descargar CSV
+        </button>
       </div>
     </div>
   )

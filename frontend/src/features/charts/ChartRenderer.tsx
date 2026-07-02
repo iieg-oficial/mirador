@@ -3,6 +3,7 @@ import * as echarts from 'echarts'
 import type { ECharts, EChartsOption } from 'echarts'
 import { AGGREGATION_LABELS } from '@/types/charts'
 import type { ChartSpec, LegendPosition } from '@/types/charts'
+import { downloadCsv } from '@/lib/csv'
 import { echartsTheme } from './themes'
 
 // ── Posición de leyenda → opción ECharts ───────────────────────────────────────
@@ -296,8 +297,22 @@ function TableRenderer({ spec, rows, className = '' }: ChartRendererProps) {
 
   return (
     <div className={`flex h-full w-full flex-col ${className}`}>
-      {spec.visual.title && (
-        <p className="mb-2 text-sm font-bold text-gray-800">{spec.visual.title}</p>
+      {(spec.visual.title || spec.interactions.download) && (
+        <div className="mb-2 flex items-center">
+          {spec.visual.title && (
+            <p className="text-sm font-bold text-gray-800">{spec.visual.title}</p>
+          )}
+          {/* Mismo gate que el PNG de las gráficas ECharts: interactions.download. */}
+          {spec.interactions.download && (
+            <button
+              onClick={() => downloadCsv(spec.visual.title || 'tabla', columns, rows)}
+              disabled={rows.length === 0}
+              className="ml-auto rounded border border-gray-200 px-2 py-0.5 text-xs text-gray-500 hover:bg-gray-50 disabled:opacity-40"
+            >
+              Descargar CSV
+            </button>
+          )}
+        </div>
       )}
       <div className="flex-1 overflow-auto rounded-lg border border-gray-100">
         <table className="w-full text-left text-xs">

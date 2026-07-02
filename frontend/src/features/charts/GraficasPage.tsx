@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from 'react'
 import type { DragEvent } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { listDatasets } from '@/features/datasets/api'
+import { downloadCsv } from '@/lib/csv'
 import {
   listCharts,
   createChart,
@@ -1024,13 +1025,28 @@ function ChartBuilder({
           </div>
 
           {previewData && (
-            <div className="border-t border-gray-100 bg-white px-4 py-2 text-xs text-gray-400">
-              {previewData.total_rows ?? previewData.rows.length} filas
-              {previewData.truncated && ' (truncado)'}
-              {' · '}
-              {previewData.elapsed_ms.toFixed(0)} ms
-              {' · '}
-              {previewData.columns.length} columnas
+            <div className="flex items-center border-t border-gray-100 bg-white px-4 py-2 text-xs text-gray-400">
+              <span>
+                {previewData.total_rows ?? previewData.rows.length} filas
+                {previewData.truncated && ' (truncado)'}
+                {' · '}
+                {previewData.elapsed_ms.toFixed(0)} ms
+                {' · '}
+                {previewData.columns.length} columnas
+              </span>
+              <button
+                onClick={() =>
+                  downloadCsv(
+                    state.name || 'grafica',
+                    previewData.columns.map((c) => c.name),
+                    previewData.rows,
+                  )
+                }
+                disabled={previewData.rows.length === 0}
+                className="ml-auto rounded-lg border border-gray-200 px-2.5 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-40"
+              >
+                Descargar CSV
+              </button>
             </div>
           )}
         </div>
