@@ -1,4 +1,4 @@
-import type { Chart, ChartCreate, ChartSpec, ChartUpdate } from '@/types/charts'
+import type { Chart, ChartCreate, ChartSpec, ChartUpdate, ChartVersion } from '@/types/charts'
 import type { PreviewResult } from '@/types/datasets'
 
 const BASE = '/api/admin/charts'
@@ -86,4 +86,19 @@ export async function previewSpec(
 /** Previsualiza una gráfica guardada (ejecuta su spec persistida). */
 export async function previewChart(id: string): Promise<ChartPreviewResult> {
   return parseResponse(await fetch(`${BASE}/${id}/preview`, { method: 'POST' }))
+}
+
+/** Clona una gráfica como recurso independiente (RF-11). */
+export async function cloneChart(id: string): Promise<Chart> {
+  return parseResponse(await fetch(`${BASE}/${id}/clone`, { method: 'POST' }))
+}
+
+/** Historial de versiones, de la más reciente a la más antigua (RF-12). */
+export async function listVersions(id: string): Promise<ChartVersion[]> {
+  return parseResponse(await fetch(`${BASE}/${id}/versions`))
+}
+
+/** Restaura una versión anterior; el spec vigente queda en el historial. */
+export async function restoreVersion(id: string, versionId: string): Promise<Chart> {
+  return parseResponse(await fetch(`${BASE}/${id}/restore/${versionId}`, { method: 'POST' }))
 }

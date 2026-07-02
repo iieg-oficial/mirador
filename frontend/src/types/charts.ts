@@ -136,6 +136,15 @@ export function emptySpec(datasetId: string, chartType: ChartType): ChartSpec {
 
 // ── Recursos persistidos ───────────────────────────────────────────────────────
 
+export type ChartStatus = 'draft' | 'in_review' | 'approved' | 'archived'
+
+export const CHART_STATUS_LABELS: Record<ChartStatus, string> = {
+  draft: 'Borrador',
+  in_review: 'En revisión',
+  approved: 'Aprobada',
+  archived: 'Archivada',
+}
+
 export interface Chart {
   id: string
   dataset_id: string
@@ -144,7 +153,7 @@ export interface Chart {
   renderer: string
   chart_type: ChartType
   chart_spec: ChartSpec
-  status: string
+  status: ChartStatus
   created_by: string | null
   created_by_email: string | null
   created_at: string
@@ -161,6 +170,19 @@ export interface ChartUpdate {
   name?: string
   description?: string | null
   chart_spec?: ChartSpec
+  change_comment?: string | null
+  status?: ChartStatus
+}
+
+export interface ChartVersion {
+  id: string
+  chart_id: string
+  version_number: number
+  chart_spec: ChartSpec
+  change_comment: string | null
+  created_by: string | null
+  created_by_email: string | null
+  created_at: string
 }
 
 export const CHART_TYPE_LABELS: Record<ChartType, string> = {

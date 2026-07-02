@@ -2,7 +2,16 @@ import { useState, useCallback, useEffect } from 'react'
 import type { DragEvent } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { listDatasets } from '@/features/datasets/api'
-import { listCharts, createChart, updateChart, deleteChart, previewSpec } from './api'
+import {
+  listCharts,
+  createChart,
+  updateChart,
+  deleteChart,
+  previewSpec,
+  cloneChart,
+  listVersions,
+  restoreVersion,
+} from './api'
 import type { ChartPreviewResult } from './api'
 import { ChartRenderer } from './ChartRenderer'
 import { ChartTypePicker } from './ChartTypePicker'
@@ -11,6 +20,7 @@ import type {
   Aggregation,
   Chart,
   ChartSpec,
+  ChartStatus,
   ChartType,
   FilterOperator,
   LegendPosition,
@@ -19,6 +29,7 @@ import type { Dataset, ColumnMeta, SemanticType } from '@/types/datasets'
 import { SEMANTIC_TYPE_LABELS } from '@/types/datasets'
 import {
   AGGREGATION_LABELS,
+  CHART_STATUS_LABELS,
   CHART_TYPE_LABELS,
   FILTER_OPERATOR_LABELS,
   LEGEND_POSITIONS,
@@ -318,16 +329,27 @@ function FieldDropZone({
 
 // ── Tarjeta de gráfica guardada ───────────────────────────────────────────────
 
+const STATUS_BADGE: Record<ChartStatus, string> = {
+  draft: 'bg-gray-100 text-gray-600',
+  in_review: 'bg-amber-50 text-amber-700',
+  approved: 'bg-emerald-50 text-emerald-700',
+  archived: 'bg-gray-100 text-gray-400',
+}
+
 function ChartCard({
   chart,
   datasets,
   onEdit,
   onDelete,
+  onClone,
+  onStatusChange,
 }: {
   chart: Chart
   datasets: Dataset[]
   onEdit: () => void
   onDelete: () => void
+  onClone: () => void
+  onStatusChange: (status: ChartStatus) => void
 }) {
   const [confirmDelete, setConfirmDelete] = useState(false)
   const dataset = datasets.find((d) => d.id === chart.dataset_id)
@@ -336,8 +358,22 @@ function ChartCard({
     <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-shadow hover:shadow">
       <div className="mb-3 flex items-start justify-between gap-2">
         <p className="text-sm font-semibold text-gray-900 leading-tight">{chart.name}</p>
-        <span className="flex-shrink-0 rounded-full bg-iieg-100 px-2 py-0.5 text-[11px] font-medium text-iieg-700">
-          {CHART_TYPE_LABELS[chart.chart_type] ?? chart.chart_type}
+        <span className="flex flex-shrink-0 items-center gap-1">
+          <select
+            value={chart.status}
+            onChange={(e) => onStatusChange(e.target.value as ChartStatus)}
+            title="Estado de la gráfica"
+            className={`rounded-full border-0 px-2 py-0.5 text-[11px] font-medium ${STATUS_BADGE[chart.status]}`}
+          >
+            {(Object.keys(CHART_STATUS_LABELS) as ChartStatus[]).map((s) => (
+              <option key={s} value={s}>
+                {CHART_STATUS_LABELS[s]}
+              </option>
+            ))}
+          </select>
+          <span className="rounded-full bg-iieg-100 px-2 py-0.5 text-[11px] font-medium text-iieg-700">
+            {CHART_TYPE_LABELS[chart.chart_type] ?? chart.chart_type}
+          </span>
         </span>
       </div>
 
@@ -377,6 +413,13 @@ function ChartCard({
               className="flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50"
             >
               Editar
+            </button>
+            <button
+              onClick={onClone}
+              title="Crear una copia independiente"
+              className="flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50"
+            >
+              Clonar
             </button>
             <button
               onClick={() => setConfirmDelete(true)}
@@ -548,9 +591,10 @@ function ChartBuilder({
   const [previewLoading, setPreviewLoading] = useState(false)
   const [previewError, setPreviewError] = useState<string | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
-  // Modo avanzado (RF-04): edición directa de la ChartSpec en JSON.
-  const [mode, setMode] = useState<'visual' | 'json'>('visual')
+  // Modo avanzado (RF-04) e historial de versiones (RF-12).
+  const [mode, setMode] = useState<'visual' | 'json' | 'history'>('visual')
   const [advancedSpec, setAdvancedSpec] = useState<ChartSpec | null>(null)
+  const [changeComment, setChangeComment] = useState('')
 
   const set = useCallback(
     <K extends keyof BuilderState>(key: K, value: BuilderState[K]) => {
@@ -644,12 +688,12 @@ function ChartBuilder({
 
   // Cambio de modo: al volver al visual se sincroniza lo representable de la
   // spec avanzada con los controles del builder.
-  function switchMode(next: 'visual' | 'json') {
+  function switchMode(next: 'visual' | 'json' | 'history') {
     if (next === mode) return
-    if (next === 'visual' && advancedSpec) {
+    if (next === 'visual' && mode === 'json' && advancedSpec) {
       setState(stateFromSpec(advancedSpec, state.name, state.description))
     }
-    setAdvancedSpec(null)
+    if (next !== 'json') setAdvancedSpec(null)
     setMode(next)
   }
 
@@ -672,6 +716,7 @@ function ChartBuilder({
           name: state.name,
           description: state.description || null,
           chart_spec: chartSpec,
+          change_comment: changeComment || null,
         })
       }
       return createChart({
@@ -685,6 +730,24 @@ function ChartBuilder({
       onSaved()
     },
     onError: (err) => setSaveError((err as Error).message),
+  })
+
+  // Historial de versiones (solo al editar una gráfica guardada).
+  const { data: versions = [] } = useQuery({
+    queryKey: ['chart-versions', editingChart?.id],
+    queryFn: () => listVersions(editingChart!.id),
+    enabled: !!editingChart && mode === 'history',
+  })
+
+  const restoreMutation = useMutation({
+    mutationFn: (versionId: string) => restoreVersion(editingChart!.id, versionId),
+    onSuccess: (updated) => {
+      qc.invalidateQueries({ queryKey: ['charts'] })
+      qc.invalidateQueries({ queryKey: ['chart-versions', updated.id] })
+      setState(builderFromChart(updated))
+      setPreviewData(null)
+      setMode('visual')
+    },
   })
 
   const referencedCols = zones.flatMap((z) => zoneValues(z))
@@ -766,6 +829,17 @@ function ChartBuilder({
         >
           Avanzado (JSON)
         </button>
+        {editingChart && (
+          <button
+            type="button"
+            onClick={() => switchMode('history')}
+            className={`rounded-lg px-3 py-1 text-xs font-medium ${
+              mode === 'history' ? 'bg-iieg-100 text-iieg-700' : 'text-gray-500 hover:bg-gray-50'
+            }`}
+          >
+            Historial
+          </button>
+        )}
         {mode === 'json' && (
           <span className="ml-2 text-[11px] text-gray-400">
             Edita la ChartSpec directamente; sin SQL ni JavaScript libres.
@@ -849,7 +923,62 @@ function ChartBuilder({
         </div>
         )}
 
+        {/* Historial de versiones (RF-12) */}
+        {mode === 'history' && (
+          <div className="flex-1 overflow-y-auto bg-gray-50 p-6">
+            {versions.length === 0 ? (
+              <p className="text-sm text-gray-400">
+                Esta gráfica aún no tiene versiones anteriores; se crean al guardar cambios en la
+                spec.
+              </p>
+            ) : (
+              <div className="mx-auto max-w-3xl space-y-3">
+                {versions.map((v) => (
+                  <div key={v.id} className="rounded-xl border border-gray-200 bg-white p-4">
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-semibold text-gray-800">
+                          Versión {v.version_number}
+                          <span className="ml-2 text-xs font-normal text-gray-400">
+                            {new Date(v.created_at).toLocaleString('es-MX')}
+                          </span>
+                        </p>
+                        <p className="mt-0.5 text-xs text-gray-500">
+                          {v.created_by_email ?? v.created_by ?? 'Autor desconocido'}
+                          {v.change_comment && <> · {v.change_comment}</>}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => restoreMutation.mutate(v.id)}
+                        disabled={restoreMutation.isPending}
+                        className="rounded-lg border border-iieg-300 px-3 py-1.5 text-xs font-medium text-iieg-700 hover:bg-iieg-50 disabled:opacity-40"
+                      >
+                        Restaurar
+                      </button>
+                    </div>
+                    <details className="mt-2">
+                      <summary className="cursor-pointer text-xs text-gray-500">
+                        Ver ChartSpec de esta versión
+                      </summary>
+                      <pre className="mt-1 max-h-56 overflow-auto rounded-lg bg-gray-50 p-2 text-[11px] text-gray-700">
+                        {JSON.stringify(v.chart_spec, null, 2)}
+                      </pre>
+                    </details>
+                  </div>
+                ))}
+                {restoreMutation.isError && (
+                  <p className="text-xs text-red-600">
+                    {(restoreMutation.error as Error).message}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Centro: vista previa */}
+        {mode !== 'history' && (
         <div className="flex flex-1 flex-col overflow-hidden bg-gray-50">
           <div className="flex items-center justify-between border-b border-gray-100 bg-white px-4 py-2.5">
             <p className="text-sm font-semibold text-gray-700">Vista previa</p>
@@ -927,6 +1056,7 @@ function ChartBuilder({
             </div>
           )}
         </div>
+        )}
 
         {/* Derecha: config visual (solo en modo visual) */}
         {mode === 'visual' && (
@@ -1136,6 +1266,16 @@ function ChartBuilder({
           {saveError && (
             <p className="text-xs text-red-600">{saveError}</p>
           )}
+          {editingChart && (
+            <input
+              type="text"
+              value={changeComment}
+              onChange={(e) => setChangeComment(e.target.value)}
+              placeholder="Comentario del cambio (opcional)"
+              maxLength={500}
+              className="w-64 rounded-lg border border-gray-200 px-3 py-2 text-xs focus:border-iieg-400 focus:outline-none"
+            />
+          )}
           <button
             onClick={() => saveMutation.mutate()}
             disabled={!canSave || saveMutation.isPending}
@@ -1171,6 +1311,17 @@ export function GraficasPage() {
 
   const deleteMutation = useMutation({
     mutationFn: deleteChart,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['charts'] }),
+  })
+
+  const cloneMutation = useMutation({
+    mutationFn: cloneChart,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['charts'] }),
+  })
+
+  const statusMutation = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: ChartStatus }) =>
+      updateChart(id, { status }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['charts'] }),
   })
 
@@ -1282,6 +1433,8 @@ export function GraficasPage() {
                     datasets={datasets}
                     onEdit={() => openBuilder(chart)}
                     onDelete={() => deleteMutation.mutate(chart.id)}
+                    onClone={() => cloneMutation.mutate(chart.id)}
+                    onStatusChange={(status) => statusMutation.mutate({ id: chart.id, status })}
                   />
                 ))}
               </div>
