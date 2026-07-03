@@ -2,6 +2,8 @@
 // dataset.max_rows, así que descargar las filas cargadas equivale a lo que
 // devolvería un endpoint de exportación — sin backend nuevo.
 
+import { downloadBlob } from './download'
+
 function escapeCell(value: unknown): string {
   if (value === null || value === undefined) return ''
   const s = String(value)
@@ -25,10 +27,5 @@ export function downloadCsv(
   rows: Record<string, unknown>[],
 ): void {
   const blob = new Blob([toCsv(columns, rows)], { type: 'text/csv;charset=utf-8' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename.endsWith('.csv') ? filename : `${filename}.csv`
-  a.click()
-  URL.revokeObjectURL(url)
+  downloadBlob(filename.endsWith('.csv') ? filename : `${filename}.csv`, blob)
 }
