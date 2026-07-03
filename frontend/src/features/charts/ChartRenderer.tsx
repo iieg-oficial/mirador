@@ -447,9 +447,16 @@ function EchartsRenderer({ spec, rows, className = '', onDataClick, onExportRead
 
     const onResize = () => chart.resize()
     window.addEventListener('resize', onResize)
+    // El tamaño del contenedor cambia sin que dispare `window.resize` (grid del
+    // tablero, tirador de resize, panel lateral). Sin observarlo, el canvas se
+    // queda con su tamaño inicial y la gráfica se ve cortada / no reacciona al
+    // ajustar el ítem. El ResizeObserver hace que ECharts siga a su contenedor.
+    const ro = new ResizeObserver(() => chart.resize())
+    ro.observe(containerRef.current)
 
     return () => {
       window.removeEventListener('resize', onResize)
+      ro.disconnect()
       chart.dispose()
       instanceRef.current = null
     }
