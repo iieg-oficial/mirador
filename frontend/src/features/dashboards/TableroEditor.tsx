@@ -540,6 +540,10 @@ export function TableroEditor() {
       {/* Grid + panel lateral */}
       <div className="flex flex-1 overflow-hidden">
         <div className="flex-1 overflow-y-auto bg-gray-50 p-4">
+          {/* Los tiradores de resize de RGL son opacity:0 hasta hover; se hacen
+              visibles para que el ajuste de tamaño sea descubrible. */}
+          <style>{`.react-grid-item > .react-resizable-handle { opacity: 0.35; }
+            .react-grid-item:hover > .react-resizable-handle { opacity: 1; }`}</style>
           {items.length === 0 ? (
             <div className="flex h-64 flex-col items-center justify-center gap-2 text-center text-sm text-gray-400">
               <p>Este tablero no tiene items todavía.</p>
@@ -553,7 +557,9 @@ export function TableroEditor() {
               cols={{ lg: GRID_COLS }}
               rowHeight={40}
               margin={[12, 12]}
+              draggableHandle=".drag-handle"
               draggableCancel=".no-drag"
+              resizeHandles={['se', 'e', 's']}
               isDraggable={!previewMode}
               isResizable={!previewMode}
               onLayoutChange={handleLayoutChange}
@@ -569,8 +575,8 @@ export function TableroEditor() {
                   }`}
                 >
                   {!previewMode && (
-                    <div className="flex flex-shrink-0 items-center justify-between border-b border-gray-100 bg-white px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-gray-400">
-                      <span>{item.item_type === 'chart' ? 'Gráfica' : 'Markdown'}</span>
+                    <div className="drag-handle flex flex-shrink-0 cursor-move select-none items-center justify-between border-b border-gray-100 bg-white px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-gray-400">
+                      <span>⠿ {item.item_type === 'chart' ? 'Gráfica' : 'Markdown'}</span>
                       <button
                         className="no-drag rounded px-1 text-gray-400 hover:text-red-600"
                         onClick={(e) => {
@@ -582,7 +588,7 @@ export function TableroEditor() {
                       </button>
                     </div>
                   )}
-                  <div className="min-h-0 flex-1 bg-white p-2">
+                  <div className="min-h-0 flex-1 overflow-auto bg-white p-2">
                     {item.item_type === 'chart' ? (
                       <ChartItemBlock
                         item={item}
