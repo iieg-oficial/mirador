@@ -8,6 +8,14 @@ import { getDashboard, replaceItems, updateDashboard } from './api'
 import { ChartItemBlock } from './ChartItemBlock'
 import { MarkdownItemBlock } from './MarkdownItemBlock'
 import { ChartPickerModal } from './ChartPickerModal'
+import { DashboardFilterBar } from './filters/DashboardFilterBar'
+import { FilterConfigPanel } from './filters/FilterConfigPanel'
+import {
+  defaultFilterValues,
+  filterTemplateContext,
+  resolveItemFilters,
+} from './filters/dashboardFilters'
+import type { DashboardFilter, FilterOption } from './filters/dashboardFilters'
 import { draftToFilter, filterToDraft } from '@/features/charts/filters'
 import type { FilterDraft } from '@/features/charts/filters'
 import { getChart } from '@/features/charts/api'
@@ -31,22 +39,13 @@ function toPayload(item: DashboardItemRead): DashboardItemPayload {
   }
 }
 
-function filterSpecToText(f: FilterSpec): string {
-  return Array.isArray(f.value) ? f.value.join(', ') : String(f.value ?? '')
-}
-
 // Fila libre siguiente: apila los items nuevos debajo de todo lo existente.
 function nextFreeRow(items: DashboardItemRead[]): number {
   return items.reduce((max, it) => Math.max(max, it.position_config.y + it.position_config.h), 0)
 }
 
-// ── Barra de filtros (globales o locales de un item) ────────────────────────
-// ponytail: sin dataset fijo por filtro (global cruza varios charts, y local
-// no vale la pena resolver el schema del dataset solo para tipar el valor),
-// así que draftToFilter recibe columns=[] y todo viaja como texto/lista.
-// Si hace falta comparar numéricamente, es fácil pasar las columnas reales.
-
-function FilterBar({
+// ── Barra de filtros LOCALES de un item (avanzado, sigue siendo FilterSpec) ──
+function LocalFilterBar({
   filters,
   onChange,
 }: {
@@ -121,22 +120,22 @@ export function TableroEditor() {
   })
 
   const [items, setItems] = useState<DashboardItemRead[]>([])
-  const [globalFilterDrafts, setGlobalFilterDrafts] = useState<FilterDraft[]>([])
+  const [globalFilters, setGlobalFilters] = useState<DashboardFilter[]>([])
+  const [filterValues, setFilterValues] = useState<Record<string, unknown>>({})
+  const [filterOptions, setFilterOptions] = useState<Record<string, FilterOption[]>>({})
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [showPicker, setShowPicker] = useState(false)
+  const [showFilterConfig, setShowFilterConfig] = useState(false)
+  const [previewMode, setPreviewMode] = useState(false)
   const [kpiValues, setKpiValues] = useState<Record<string, string>>({})
   const [saveError, setSaveError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!dashboard) return
     setItems(dashboard.items)
-    setGlobalFilterDrafts(dashboard.global_filters.map(filterToDraft))
+    setGlobalFilters(dashboard.global_filters)
+    setFilterValues(defaultFilterValues(dashboard.global_filters))
   }, [dashboard])
-
-  const globalFilters = useMemo(
-    () => globalFilterDrafts.filter((f) => f.field).map((f) => draftToFilter(f, [])),
-    [globalFilterDrafts],
-  )
 
   const selectedItem = items.find((it) => it.id === selectedId) ?? null
 
@@ -145,6 +144,14 @@ export function TableroEditor() {
     queryFn: () => getChart(selectedItem!.chart_id!),
     enabled: !!selectedItem?.chart_id,
   })
+
+  const chartItems = useMemo(
+    () =>
+      items
+        .filter((it) => it.item_type === 'chart')
+        .map((it, idx) => ({ id: it.id, label: `Gráfica ${idx + 1}` })),
+    [items],
+  )
 
   function updateLocalConfig(itemId: string, patch: Record<string, unknown>) {
     setItems((prev) =>
@@ -214,17 +221,21 @@ export function TableroEditor() {
     setKpiValues((prev) => (prev[variableKey] === value ? prev : { ...prev, [variableKey]: value }))
   }, [])
 
+  const handleOptions = useCallback((filterId: string, options: FilterOption[]) => {
+    setFilterOptions((prev) => (prev[filterId] === options ? prev : { ...prev, [filterId]: options }))
+  }, [])
+
   const templateContext: TemplateContext = useMemo(
     () => ({
       kpi: kpiValues,
-      filter: Object.fromEntries(globalFilters.map((f) => [f.field, filterSpecToText(f)])),
+      filter: filterTemplateContext(globalFilters, filterValues, filterOptions),
       dashboard: {
         title: dashboard?.name ?? '',
         description: dashboard?.description ?? '',
         updated_at: dashboard?.updated_at ?? '',
       },
     }),
-    [kpiValues, globalFilters, dashboard],
+    [kpiValues, globalFilters, filterValues, filterOptions, dashboard],
   )
 
   const layout = useMemo(() => items.map((it) => ({ i: it.id, ...it.position_config })), [items])
@@ -247,28 +258,45 @@ export function TableroEditor() {
           <Link to="/admin/tableros" className="text-xs text-gray-400 hover:text-gray-600">
             ← Tableros
           </Link>
-          <h1 className="text-lg font-bold text-gray-900">{dashboard.name}</h1>
+          <h1 className="text-lg font-bold text-gray-900">
+            {dashboard.name}
+            {previewMode && <span className="ml-2 text-xs font-medium text-iieg-600">· Vista previa</span>}
+          </h1>
         </div>
         <div className="flex items-center gap-2">
           {saveError && <p className="text-xs text-red-600">{saveError}</p>}
+          {!previewMode && (
+            <>
+              <button
+                onClick={() => setShowPicker(true)}
+                className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50"
+              >
+                Agregar gráfica
+              </button>
+              <button
+                onClick={addMarkdownItem}
+                className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50"
+              >
+                Agregar Markdown
+              </button>
+              <button
+                onClick={() => saveItemsMutation.mutate()}
+                disabled={saveItemsMutation.isPending}
+                className="rounded-lg bg-iieg-700 px-4 py-1.5 text-xs font-medium text-white hover:bg-iieg-600 disabled:opacity-40"
+              >
+                {saveItemsMutation.isPending ? 'Guardando…' : 'Guardar'}
+              </button>
+            </>
+          )}
           <button
-            onClick={() => setShowPicker(true)}
-            className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50"
+            onClick={() => {
+              setPreviewMode((p) => !p)
+              setSelectedId(null)
+              setShowFilterConfig(false)
+            }}
+            className="rounded-lg border border-iieg-300 px-3 py-1.5 text-xs font-medium text-iieg-700 hover:bg-iieg-50"
           >
-            Agregar gráfica
-          </button>
-          <button
-            onClick={addMarkdownItem}
-            className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50"
-          >
-            Agregar Markdown
-          </button>
-          <button
-            onClick={() => saveItemsMutation.mutate()}
-            disabled={saveItemsMutation.isPending}
-            className="rounded-lg bg-iieg-700 px-4 py-1.5 text-xs font-medium text-white hover:bg-iieg-600 disabled:opacity-40"
-          >
-            {saveItemsMutation.isPending ? 'Guardando…' : 'Guardar'}
+            {previewMode ? 'Volver al editor' : 'Preview'}
           </button>
         </div>
       </div>
@@ -277,16 +305,44 @@ export function TableroEditor() {
       <div className="border-b border-gray-100 bg-white px-6 py-3">
         <div className="flex items-center justify-between">
           <p className="text-xs font-bold uppercase tracking-wider text-gray-400">Filtros globales</p>
-          <button
-            onClick={() => saveFiltersMutation.mutate()}
-            disabled={saveFiltersMutation.isPending}
-            className="rounded-lg border border-iieg-300 px-2.5 py-1 text-xs font-medium text-iieg-700 hover:bg-iieg-50 disabled:opacity-40"
-          >
-            {saveFiltersMutation.isPending ? 'Guardando…' : 'Guardar filtros'}
-          </button>
+          {!previewMode && (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowFilterConfig((s) => !s)}
+                className="rounded-lg border border-gray-200 px-2.5 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50"
+              >
+                {showFilterConfig ? 'Cerrar configuración' : 'Configurar'}
+              </button>
+              <button
+                onClick={() => saveFiltersMutation.mutate()}
+                disabled={saveFiltersMutation.isPending}
+                className="rounded-lg border border-iieg-300 px-2.5 py-1 text-xs font-medium text-iieg-700 hover:bg-iieg-50 disabled:opacity-40"
+              >
+                {saveFiltersMutation.isPending ? 'Guardando…' : 'Guardar filtros'}
+              </button>
+            </div>
+          )}
         </div>
-        <div className="mt-2 max-w-3xl">
-          <FilterBar filters={globalFilterDrafts} onChange={setGlobalFilterDrafts} />
+
+        {showFilterConfig && !previewMode && (
+          <div className="mt-2 max-w-md">
+            <FilterConfigPanel
+              filters={globalFilters}
+              onChange={setGlobalFilters}
+              chartItems={chartItems}
+            />
+          </div>
+        )}
+
+        <div className="mt-2">
+          <DashboardFilterBar
+            filters={globalFilters}
+            values={filterValues}
+            optionsById={filterOptions}
+            onChange={setFilterValues}
+            onOptions={handleOptions}
+            onClear={() => setFilterValues(defaultFilterValues(globalFilters))}
+          />
         </div>
       </div>
 
@@ -307,33 +363,39 @@ export function TableroEditor() {
               rowHeight={40}
               margin={[12, 12]}
               draggableCancel=".no-drag"
+              isDraggable={!previewMode}
+              isResizable={!previewMode}
               onLayoutChange={handleLayoutChange}
             >
               {items.map((item) => (
                 <div
                   key={item.id}
-                  onClick={() => setSelectedId(item.id)}
+                  onClick={() => !previewMode && setSelectedId(item.id)}
                   className={`group flex flex-col overflow-hidden rounded-xl border ${
-                    selectedId === item.id ? 'border-iieg-500 ring-1 ring-iieg-500' : 'border-gray-100'
+                    !previewMode && selectedId === item.id
+                      ? 'border-iieg-500 ring-1 ring-iieg-500'
+                      : 'border-gray-100'
                   }`}
                 >
-                  <div className="flex flex-shrink-0 items-center justify-between border-b border-gray-100 bg-white px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-gray-400">
-                    <span>{item.item_type === 'chart' ? 'Gráfica' : 'Markdown'}</span>
-                    <button
-                      className="no-drag rounded px-1 text-gray-400 hover:text-red-600"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        removeItem(item.id)
-                      }}
-                    >
-                      ×
-                    </button>
-                  </div>
+                  {!previewMode && (
+                    <div className="flex flex-shrink-0 items-center justify-between border-b border-gray-100 bg-white px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-gray-400">
+                      <span>{item.item_type === 'chart' ? 'Gráfica' : 'Markdown'}</span>
+                      <button
+                        className="no-drag rounded px-1 text-gray-400 hover:text-red-600"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          removeItem(item.id)
+                        }}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  )}
                   <div className="min-h-0 flex-1 bg-white p-2">
                     {item.item_type === 'chart' ? (
                       <ChartItemBlock
                         item={item}
-                        globalFilters={globalFilters}
+                        globalFilters={resolveItemFilters(globalFilters, filterValues, item.id)}
                         onKpiResolved={handleKpiResolved}
                         className="h-full w-full"
                       />
@@ -351,7 +413,7 @@ export function TableroEditor() {
           )}
         </div>
 
-        {selectedItem && (
+        {selectedItem && !previewMode && (
           <div className="w-80 flex-shrink-0 space-y-4 overflow-y-auto border-l border-gray-100 bg-white p-4">
             <div className="flex items-center justify-between">
               <p className="text-xs font-bold uppercase tracking-wider text-gray-400">
@@ -366,7 +428,7 @@ export function TableroEditor() {
               <>
                 <div>
                   <p className="mb-1 text-xs font-semibold text-gray-600">Filtros locales</p>
-                  <FilterBar
+                  <LocalFilterBar
                     filters={selectedLocalFilters}
                     onChange={(drafts) =>
                       updateLocalConfig(selectedItem.id, {
