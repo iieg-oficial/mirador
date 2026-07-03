@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Responsive, WidthProvider } from 'react-grid-layout/legacy'
 import type { Layout } from 'react-grid-layout/legacy'
@@ -15,7 +15,8 @@ import {
   filterTemplateContext,
   resolveItemFilters,
 } from './filters/dashboardFilters'
-import type { DashboardFilter, FilterOption } from './filters/dashboardFilters'
+import type { DashboardFilter, FilterOption, FilterTarget } from './filters/dashboardFilters'
+import { crossFilterOf, resolveCrossFilters, toggleInteraction } from './filters/interactions'
 import { draftToFilter, filterToDraft } from '@/features/charts/filters'
 import type { FilterDraft } from '@/features/charts/filters'
 import { getChart } from '@/features/charts/api'
@@ -42,6 +43,23 @@ function toPayload(item: DashboardItemRead): DashboardItemPayload {
 // Fila libre siguiente: apila los items nuevos debajo de todo lo existente.
 function nextFreeRow(items: DashboardItemRead[]): number {
   return items.reduce((max, it) => Math.max(max, it.position_config.y + it.position_config.h), 0)
+}
+
+// Estado de filtros/interacciones persistido en la URL (§6, "persistencia de
+// filtros en URL"): un único query param `f` con `{v: filterValues, x: interactions}`.
+interface UrlFilterState {
+  v: Record<string, unknown>
+  x: Record<string, unknown>
+}
+
+function parseUrlFilterState(raw: string | null): UrlFilterState | null {
+  if (!raw) return null
+  try {
+    const parsed = JSON.parse(raw) as Partial<UrlFilterState>
+    return { v: parsed.v ?? {}, x: parsed.x ?? {} }
+  } catch {
+    return null
+  }
 }
 
 // ── Barra de filtros LOCALES de un item (avanzado, sigue siendo FilterSpec) ──
@@ -109,9 +127,78 @@ function LocalFilterBar({
   )
 }
 
+// ── Config de cross-filtering de un item chart (§6): clic → filtra otros ──
+function CrossFilterEditor({
+  config,
+  onChange,
+  otherChartItems,
+}: {
+  config: { enabled: boolean; targets: FilterTarget[] }
+  onChange: (config: { enabled: boolean; targets: FilterTarget[] }) => void
+  otherChartItems: { id: string; label: string }[]
+}) {
+  return (
+    <div className="space-y-1.5">
+      <label className="flex items-center gap-1.5 text-xs text-gray-600">
+        <input
+          type="checkbox"
+          checked={config.enabled}
+          onChange={(e) => onChange({ ...config, enabled: e.target.checked })}
+        />
+        Al hacer clic en un dato, filtrar otras gráficas
+      </label>
+      {config.enabled && (
+        <div className="space-y-1 rounded bg-gray-50 p-1.5">
+          {otherChartItems.length === 0 && (
+            <p className="text-[11px] text-gray-400">No hay otras gráficas en el tablero.</p>
+          )}
+          {otherChartItems.map((it) => {
+            const target = config.targets.find((t) => t.item_id === it.id)
+            return (
+              <div key={it.id} className="flex items-center gap-1.5">
+                <label className="flex flex-1 items-center gap-1 truncate text-[11px] text-gray-600">
+                  <input
+                    type="checkbox"
+                    checked={!!target}
+                    onChange={(e) =>
+                      onChange({
+                        ...config,
+                        targets: e.target.checked
+                          ? [...config.targets, { item_id: it.id, field: '' }]
+                          : config.targets.filter((t) => t.item_id !== it.id),
+                      })
+                    }
+                  />
+                  {it.label}
+                </label>
+                {target && (
+                  <input
+                    value={target.field}
+                    onChange={(e) =>
+                      onChange({
+                        ...config,
+                        targets: config.targets.map((t) =>
+                          t.item_id === it.id ? { ...t, field: e.target.value } : t,
+                        ),
+                      })
+                    }
+                    placeholder="campo"
+                    className="w-24 rounded border border-gray-200 px-1.5 py-0.5 text-[11px]"
+                  />
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function TableroEditor() {
   const { id } = useParams<{ id: string }>()
   const qc = useQueryClient()
+  const [searchParams, setSearchParams] = useSearchParams()
 
   const { data: dashboard, isLoading } = useQuery({
     queryKey: ['dashboard', id],
@@ -122,6 +209,7 @@ export function TableroEditor() {
   const [items, setItems] = useState<DashboardItemRead[]>([])
   const [globalFilters, setGlobalFilters] = useState<DashboardFilter[]>([])
   const [filterValues, setFilterValues] = useState<Record<string, unknown>>({})
+  const [interactions, setInteractions] = useState<Record<string, unknown>>({})
   const [filterOptions, setFilterOptions] = useState<Record<string, FilterOption[]>>({})
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [showPicker, setShowPicker] = useState(false)
@@ -129,13 +217,32 @@ export function TableroEditor() {
   const [previewMode, setPreviewMode] = useState(false)
   const [kpiValues, setKpiValues] = useState<Record<string, string>>({})
   const [saveError, setSaveError] = useState<string | null>(null)
+  // Evita que el efecto de sincronización a la URL borre el estado inicial
+  // (leído de la URL) antes de que el tablero termine de cargar.
+  const urlSyncReady = useRef(false)
 
   useEffect(() => {
     if (!dashboard) return
     setItems(dashboard.items)
     setGlobalFilters(dashboard.global_filters)
-    setFilterValues(defaultFilterValues(dashboard.global_filters))
+    const fromUrl = parseUrlFilterState(searchParams.get('f'))
+    setFilterValues(fromUrl?.v ?? defaultFilterValues(dashboard.global_filters))
+    setInteractions(fromUrl?.x ?? {})
+    urlSyncReady.current = true
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dashboard])
+
+  // Persiste filtros + interacciones activas en la URL (`?f=`) para que un
+  // tablero filtrado se pueda compartir/recargar con el mismo estado.
+  useEffect(() => {
+    if (!urlSyncReady.current) return
+    const hasState = Object.keys(filterValues).length > 0 || Object.keys(interactions).length > 0
+    const next = new URLSearchParams(searchParams)
+    if (hasState) next.set('f', JSON.stringify({ v: filterValues, x: interactions }))
+    else next.delete('f')
+    setSearchParams(next, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterValues, interactions])
 
   const selectedItem = items.find((it) => it.id === selectedId) ?? null
 
@@ -220,6 +327,11 @@ export function TableroEditor() {
   const handleKpiResolved = useCallback((variableKey: string, value: string) => {
     setKpiValues((prev) => (prev[variableKey] === value ? prev : { ...prev, [variableKey]: value }))
   }, [])
+
+  const handleDataClick = useCallback(
+    (itemId: string) => (value: string) => setInteractions((prev) => toggleInteraction(prev, itemId, value)),
+    [],
+  )
 
   const handleOptions = useCallback((filterId: string, options: FilterOption[]) => {
     setFilterOptions((prev) => (prev[filterId] === options ? prev : { ...prev, [filterId]: options }))
@@ -344,6 +456,42 @@ export function TableroEditor() {
             onClear={() => setFilterValues(defaultFilterValues(globalFilters))}
           />
         </div>
+
+        {Object.keys(interactions).length > 0 && (
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+              Filtro por clic:
+            </span>
+            {Object.entries(interactions).map(([sourceId, value]) => (
+              <span
+                key={sourceId}
+                className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] text-amber-700"
+              >
+                {chartItems.find((c) => c.id === sourceId)?.label ?? sourceId}: {String(value)}
+                <button
+                  type="button"
+                  onClick={() =>
+                    setInteractions((prev) => {
+                      const next = { ...prev }
+                      delete next[sourceId]
+                      return next
+                    })
+                  }
+                  className="text-amber-400 hover:text-amber-700"
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+            <button
+              type="button"
+              onClick={() => setInteractions({})}
+              className="rounded px-1.5 py-0.5 text-[11px] font-medium text-gray-500 hover:bg-gray-100"
+            >
+              Limpiar clics
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Grid + panel lateral */}
@@ -395,8 +543,12 @@ export function TableroEditor() {
                     {item.item_type === 'chart' ? (
                       <ChartItemBlock
                         item={item}
-                        globalFilters={resolveItemFilters(globalFilters, filterValues, item.id)}
+                        globalFilters={[
+                          ...resolveItemFilters(globalFilters, filterValues, item.id),
+                          ...resolveCrossFilters(items, interactions, item.id),
+                        ]}
                         onKpiResolved={handleKpiResolved}
+                        onDataClick={handleDataClick(item.id)}
                         className="h-full w-full"
                       />
                     ) : (
@@ -435,6 +587,14 @@ export function TableroEditor() {
                         filters: drafts.filter((d) => d.field).map((d) => draftToFilter(d, [])),
                       })
                     }
+                  />
+                </div>
+                <div className="border-t border-gray-100 pt-3">
+                  <p className="mb-1 text-xs font-semibold text-gray-600">Interactividad</p>
+                  <CrossFilterEditor
+                    config={crossFilterOf(selectedItem.local_config)}
+                    onChange={(config) => updateLocalConfig(selectedItem.id, { cross_filter: config })}
+                    otherChartItems={chartItems.filter((c) => c.id !== selectedItem.id)}
                   />
                 </div>
                 {selectedIsKpi && (
