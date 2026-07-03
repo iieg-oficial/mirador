@@ -17,13 +17,16 @@ import {
 } from './filters/dashboardFilters'
 import type { DashboardFilter, FilterOption, FilterTarget } from './filters/dashboardFilters'
 import { crossFilterOf, resolveCrossFilters, toggleInteraction } from './filters/interactions'
+import { buildDashboardZip, buildReportPdf } from './export'
 import { draftToFilter, filterToDraft } from '@/features/charts/filters'
 import type { FilterDraft } from '@/features/charts/filters'
 import { getChart } from '@/features/charts/api'
+import type { ChartExportInfo } from '@/features/charts/ChartRenderer'
 import { FILTER_OPERATOR_LABELS } from '@/types/charts'
 import type { Chart, FilterOperator, FilterSpec } from '@/types/charts'
 import type { DashboardItemPayload, DashboardItemRead } from '@/types/dashboards'
 import type { TemplateContext } from './utils/resolveDashboardTemplate'
+import { downloadBlob } from '@/lib/download'
 
 const ResponsiveGridLayout = WidthProvider(Responsive)
 
@@ -217,6 +220,10 @@ export function TableroEditor() {
   const [previewMode, setPreviewMode] = useState(false)
   const [kpiValues, setKpiValues] = useState<Record<string, string>>({})
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [exportingZip, setExportingZip] = useState(false)
+  // Snapshot de export (PNG/rows) por item, reportado por cada ChartItemBlock
+  // al montarse (§7). No es estado de React: no necesita disparar renders.
+  const chartExportsRef = useRef<Map<string, ChartExportInfo>>(new Map())
   // Evita que el efecto de sincronización a la URL borre el estado inicial
   // (leído de la URL) antes de que el tablero termine de cargar.
   const urlSyncReady = useRef(false)
@@ -333,6 +340,28 @@ export function TableroEditor() {
     [],
   )
 
+  const handleExportReady = useCallback(
+    (itemId: string) => (info: ChartExportInfo) => chartExportsRef.current.set(itemId, info),
+    [],
+  )
+
+  function handleExportPdf() {
+    if (!dashboard) return
+    const doc = buildReportPdf({ dashboard, items, chartExports: chartExportsRef.current })
+    downloadBlob(`${dashboard.name}.pdf`, doc.output('blob'))
+  }
+
+  async function handleExportZip() {
+    if (!dashboard) return
+    setExportingZip(true)
+    try {
+      const blob = await buildDashboardZip({ dashboard, items, chartExports: chartExportsRef.current })
+      downloadBlob(`${dashboard.name}.zip`, blob)
+    } finally {
+      setExportingZip(false)
+    }
+  }
+
   const handleOptions = useCallback((filterId: string, options: FilterOption[]) => {
     setFilterOptions((prev) => (prev[filterId] === options ? prev : { ...prev, [filterId]: options }))
   }, [])
@@ -409,6 +438,20 @@ export function TableroEditor() {
             className="rounded-lg border border-iieg-300 px-3 py-1.5 text-xs font-medium text-iieg-700 hover:bg-iieg-50"
           >
             {previewMode ? 'Volver al editor' : 'Preview'}
+          </button>
+          <button
+            onClick={handleExportPdf}
+            disabled={items.length === 0}
+            className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-40"
+          >
+            Descargar PDF
+          </button>
+          <button
+            onClick={handleExportZip}
+            disabled={items.length === 0 || exportingZip}
+            className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-40"
+          >
+            {exportingZip ? 'Empacando…' : 'Descargar ZIP'}
           </button>
         </div>
       </div>
@@ -549,6 +592,7 @@ export function TableroEditor() {
                         ]}
                         onKpiResolved={handleKpiResolved}
                         onDataClick={handleDataClick(item.id)}
+                        onExportReady={handleExportReady(item.id)}
                         className="h-full w-full"
                       />
                     ) : (
