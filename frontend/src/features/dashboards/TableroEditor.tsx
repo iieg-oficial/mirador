@@ -537,13 +537,20 @@ export function TableroEditor() {
         )}
       </div>
 
-      {/* Grid + panel lateral */}
-      <div className="flex flex-1 overflow-hidden">
+      {/* Grid + panel lateral (el panel es overlay: no encoge el grid ni lo
+          reflowea a media interacción, que era lo que "borraba" el arrastre) */}
+      <div className="relative flex flex-1 overflow-hidden">
         <div className="flex-1 overflow-y-auto bg-gray-50 p-4">
           {/* Los tiradores de resize de RGL son opacity:0 hasta hover; se hacen
-              visibles para que el ajuste de tamaño sea descubrible. */}
+              visibles para que el ajuste de tamaño sea descubrible. En modo
+              edición se dibuja una cuadrícula de fondo (12 col × rowHeight+margen)
+              para ver en qué tamaño cabe cada componente. */}
           <style>{`.react-grid-item > .react-resizable-handle { opacity: 0.35; }
-            .react-grid-item:hover > .react-resizable-handle { opacity: 1; }`}</style>
+            .react-grid-item:hover > .react-resizable-handle { opacity: 1; }
+            .tablero-grid-edit { background-image:
+              linear-gradient(to right, rgba(99,102,241,0.10) 1px, transparent 1px),
+              linear-gradient(to bottom, rgba(99,102,241,0.10) 1px, transparent 1px);
+              background-size: calc(100% / ${GRID_COLS}) 52px; }`}</style>
           {items.length === 0 ? (
             <div className="flex h-64 flex-col items-center justify-center gap-2 text-center text-sm text-gray-400">
               <p>Este tablero no tiene items todavía.</p>
@@ -551,7 +558,7 @@ export function TableroEditor() {
             </div>
           ) : (
             <ResponsiveGridLayout
-              className="layout"
+              className={previewMode ? 'layout' : 'layout tablero-grid-edit'}
               layouts={{ lg: layout }}
               breakpoints={{ lg: 0 }}
               cols={{ lg: GRID_COLS }}
@@ -616,7 +623,7 @@ export function TableroEditor() {
         </div>
 
         {selectedItem && !previewMode && (
-          <div className="w-80 flex-shrink-0 space-y-4 overflow-y-auto border-l border-gray-100 bg-white p-4">
+          <div className="absolute right-0 top-0 z-10 h-full w-80 flex-shrink-0 space-y-4 overflow-y-auto border-l border-gray-100 bg-white p-4 shadow-xl">
             <div className="flex items-center justify-between">
               <p className="text-xs font-bold uppercase tracking-wider text-gray-400">
                 {selectedItem.item_type === 'chart' ? 'Gráfica' : 'Markdown'}
