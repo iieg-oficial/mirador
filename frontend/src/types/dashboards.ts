@@ -3,7 +3,7 @@
 // no HTML: una cuadrícula de items que referencian Charts existentes o texto
 // Markdown, más filtros globales aplicados a todos los items `chart`.
 
-import type { FilterSpec } from './charts'
+import type { DashboardFilter } from '@/features/dashboards/filters/dashboardFilters'
 
 // Solo 2 estados en el backend (models.py DashboardStatus): "archivar" es en
 // realidad el soft-delete de DELETE /{id} (pone status=archived y lo saca del
@@ -46,7 +46,7 @@ export interface DashboardRead {
   name: string
   description: string | null
   status: DashboardStatus
-  global_filters: FilterSpec[]
+  global_filters: DashboardFilter[]
   created_by: string | null
   created_by_email: string | null
   created_at: string
@@ -65,5 +65,5 @@ export interface DashboardCreate {
 export interface DashboardUpdate {
   name?: string
   description?: string | null
-  global_filters?: FilterSpec[]
+  global_filters?: DashboardFilter[]
 }
