@@ -14,6 +14,10 @@ export default defineConfig({
   server: {
     host: true,
     port: 5173,
+    // En Docker sobre Linux el bind-mount no propaga eventos inotify al
+    // contenedor: sin polling, Vite HMR no ve los cambios de código y sirve
+    // un bundle viejo (cambios que "no aparecen" en el navegador).
+    watch: { usePolling: true },
     proxy: {
       "/api": {
         target: process.env.VITE_BACKEND_URL ?? "http://localhost:8000",
