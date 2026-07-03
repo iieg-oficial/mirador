@@ -684,6 +684,19 @@ function ChartBuilder({
     if (editingChart && state.datasetId) runPreview()
   }, [])
 
+  // Un KPI colapsa la métrica a un solo número, así que el backend exige una
+  // agregación. Al elegir la métrica de un KPI sin agregación, aplica una por
+  // defecto (evita el error "'kpi' requiere una agregación en la métrica").
+  useEffect(() => {
+    if (state.chartType !== 'kpi') return
+    const field = state.fieldY[0]
+    if (!field || state.aggregations[field]) return
+    const allowed = (schemaColumns.find((c) => c.name === field)?.aggregations ??
+      (Object.keys(AGGREGATION_LABELS) as Aggregation[])) as Aggregation[]
+    const def = allowed.includes('sum') ? 'sum' : allowed[0]
+    if (def) setState((prev) => ({ ...prev, aggregations: { ...prev.aggregations, [field]: def } }))
+  }, [state.chartType, state.fieldY, state.aggregations, schemaColumns])
+
   const saveMutation = useMutation({
     mutationFn: async () => {
       if (mode === 'json' && !advancedSpec) {
@@ -1124,7 +1137,8 @@ function ChartBuilder({
                         aggregations: { ...prev.aggregations, [field]: v as Aggregation | '' },
                       }))
                     }
-                    placeholder="Sin agregar"
+                    required={state.chartType === 'kpi'}
+                    placeholder={state.chartType === 'kpi' ? 'Selecciona…' : 'Sin agregar'}
                     options={allowed.map((a) => ({ value: a, label: AGGREGATION_LABELS[a] }))}
                   />
                 )
