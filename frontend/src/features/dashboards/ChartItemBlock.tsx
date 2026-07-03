@@ -12,6 +12,8 @@ interface Props {
   /** Reporta el valor ya formateado de una gráfica KPI referenciada, para que
    * el editor lo exponga como `kpi.<variable_key>` en el contexto Markdown. */
   onKpiResolved?: (variableKey: string, value: string) => void
+  /** Cross-filtering (§6): reporta el valor clicado en esta gráfica. */
+  onDataClick?: (value: string) => void
 }
 
 function localFiltersOf(item: DashboardItemRead): FilterSpec[] {
@@ -19,7 +21,13 @@ function localFiltersOf(item: DashboardItemRead): FilterSpec[] {
   return Array.isArray(raw) ? (raw as FilterSpec[]) : []
 }
 
-export function ChartItemBlock({ item, globalFilters, className = '', onKpiResolved }: Props) {
+export function ChartItemBlock({
+  item,
+  globalFilters,
+  className = '',
+  onKpiResolved,
+  onDataClick,
+}: Props) {
   const chartId = item.chart_id
   const {
     data: chart,
@@ -86,5 +94,5 @@ export function ChartItemBlock({ item, globalFilters, className = '', onKpiResol
     )
   }
 
-  return <ChartRenderer spec={spec} rows={preview.rows} className={className} />
+  return <ChartRenderer spec={spec} rows={preview.rows} className={className} onDataClick={onDataClick} />
 }
