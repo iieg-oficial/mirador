@@ -101,16 +101,35 @@ def test_get_dashboard_includes_items(client: TestClient) -> None:
 
 def test_update_dashboard(client: TestClient) -> None:
     created = _create_dashboard(client)
+    filtro = {
+        "id": "anio",
+        "label": "Año",
+        "control_type": "select",
+        "options": [{"value": 2026, "label": "2026"}],
+        "default_value": 2026,
+        "targets": [],
+    }
     res = client.put(
         f"/api/admin/dashboards/{created['id']}",
-        json={"name": "Panorama estatal", "global_filters": [{"field": "anio", "operator": "=", "value": 2026}]},
+        json={"name": "Panorama estatal", "global_filters": [filtro]},
     )
     assert res.status_code == 200, res.text
     body = res.json()
     assert body["name"] == "Panorama estatal"
-    assert body["global_filters"] == [{"field": "anio", "operator": "=", "value": 2026}]
+    assert body["global_filters"][0]["id"] == "anio"
+    assert body["global_filters"][0]["control_type"] == "select"
     # description no incluida en el patch (exclude_unset) → conserva la original.
     assert body["description"] == "Indicadores clave"
+
+
+def test_update_dashboard_rejects_invalid_filter(client: TestClient) -> None:
+    created = _create_dashboard(client)
+    # control_type fuera del enum → 422.
+    res = client.put(
+        f"/api/admin/dashboards/{created['id']}",
+        json={"global_filters": [{"id": "x", "label": "X", "control_type": "slider"}]},
+    )
+    assert res.status_code == 422, res.text
 
 
 def test_archive_dashboard(client: TestClient) -> None:

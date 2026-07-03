@@ -6,7 +6,44 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from app.modules.charts.spec import FilterSpec
+ControlType = Literal["select", "multiselect", "year", "numrange", "daterange", "toggle", "text"]
+
+
+class FilterOption(BaseModel):
+    """Opción estática de un control select/multiselect."""
+
+    value: Any
+    label: str
+
+
+class FilterTarget(BaseModel):
+    """Mapea un filtro global al campo correspondiente en un item del tablero."""
+
+    item_id: str
+    field: str = Field(min_length=1, max_length=120)
+
+
+class DashboardFilter(BaseModel):
+    """Filtro global configurable (RF-14, §5.2).
+
+    El backend solo persiste la definición (JSONB en `global_filters`); el
+    frontend renderiza el control, resuelve las opciones y aplica el valor a
+    los items indicados en `targets`. `id` es también el nombre de la variable
+    `{{ filter.<id> }}` en Markdown.
+    """
+
+    id: str = Field(min_length=1, max_length=60)
+    label: str = Field(min_length=1, max_length=120)
+    control_type: ControlType
+    # Origen de opciones: dataset (value/label fields) o lista estática.
+    source_dataset_id: uuid.UUID | None = None
+    value_field: str | None = Field(default=None, max_length=120)
+    label_field: str | None = Field(default=None, max_length=120)
+    options: list[FilterOption] = Field(default_factory=list)
+    default_value: Any = None
+    required: bool = False
+    # Vacío → se aplica a todo item chart usando value_field/id como campo.
+    targets: list[FilterTarget] = Field(default_factory=list)
 
 
 class DashboardCreate(BaseModel):
@@ -17,8 +54,8 @@ class DashboardCreate(BaseModel):
 class DashboardUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=120)
     description: str | None = None
-    # Filtros globales (RF-14): mismos operadores validados que la ChartSpec.
-    global_filters: list[FilterSpec] | None = None
+    # Filtros globales configurables (RF-14, §5.2).
+    global_filters: list[DashboardFilter] | None = None
 
 
 class PositionConfig(BaseModel):
