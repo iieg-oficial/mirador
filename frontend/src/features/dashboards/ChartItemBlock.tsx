@@ -2,6 +2,7 @@ import { useEffect, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { getChart, previewSpec } from '@/features/charts/api'
 import { ChartRenderer } from '@/features/charts/ChartRenderer'
+import type { ChartExportInfo } from '@/features/charts/ChartRenderer'
 import type { FilterSpec } from '@/types/charts'
 import type { DashboardItemRead } from '@/types/dashboards'
 
@@ -14,6 +15,8 @@ interface Props {
   onKpiResolved?: (variableKey: string, value: string) => void
   /** Cross-filtering (§6): reporta el valor clicado en esta gráfica. */
   onDataClick?: (value: string) => void
+  /** Exportación del tablero (§7): snapshot de datos listos para PNG/CSV/PDF. */
+  onExportReady?: (info: ChartExportInfo) => void
 }
 
 function localFiltersOf(item: DashboardItemRead): FilterSpec[] {
@@ -27,6 +30,7 @@ export function ChartItemBlock({
   className = '',
   onKpiResolved,
   onDataClick,
+  onExportReady,
 }: Props) {
   const chartId = item.chart_id
   const {
@@ -94,5 +98,13 @@ export function ChartItemBlock({
     )
   }
 
-  return <ChartRenderer spec={spec} rows={preview.rows} className={className} onDataClick={onDataClick} />
+  return (
+    <ChartRenderer
+      spec={spec}
+      rows={preview.rows}
+      className={className}
+      onDataClick={onDataClick}
+      onExportReady={onExportReady}
+    />
+  )
 }
