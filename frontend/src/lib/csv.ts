@@ -9,17 +9,22 @@ function escapeCell(value: unknown): string {
   return /[",\r\n]/.test(s) ? `"${s.replaceAll('"', '""')}"` : s
 }
 
-/** Genera un CSV (RFC 4180, con BOM para que Excel respete acentos) y lo descarga. */
+/** Genera el texto CSV (RFC 4180, con BOM para que Excel respete acentos). */
+export function toCsv(columns: string[], rows: Record<string, unknown>[]): string {
+  const lines = [
+    columns.map(escapeCell).join(','),
+    ...rows.map((row) => columns.map((c) => escapeCell(row[c])).join(',')),
+  ]
+  return '﻿' + lines.join('\r\n')
+}
+
+/** Genera un CSV y lo descarga. */
 export function downloadCsv(
   filename: string,
   columns: string[],
   rows: Record<string, unknown>[],
 ): void {
-  const lines = [
-    columns.map(escapeCell).join(','),
-    ...rows.map((row) => columns.map((c) => escapeCell(row[c])).join(',')),
-  ]
-  const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' })
+  const blob = new Blob([toCsv(columns, rows)], { type: 'text/csv;charset=utf-8' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
