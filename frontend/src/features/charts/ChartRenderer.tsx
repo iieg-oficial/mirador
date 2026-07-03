@@ -400,11 +400,16 @@ interface ChartRendererProps {
   spec: ChartSpec
   rows: Record<string, unknown>[]
   className?: string
+  /** Cross-filtering (§6): notifica el `name` (categoría/dimensión) del dato
+   * en el que se hizo clic. Solo lo dispara el renderer de ECharts. */
+  onDataClick?: (name: string) => void
 }
 
-function EchartsRenderer({ spec, rows, className = '' }: ChartRendererProps) {
+function EchartsRenderer({ spec, rows, className = '', onDataClick }: ChartRendererProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const instanceRef = useRef<ECharts | null>(null)
+  const onDataClickRef = useRef(onDataClick)
+  onDataClickRef.current = onDataClick
 
   // Inicializar / destruir instancia con el contenedor. El tema de ECharts
   // solo se aplica en init, así que un cambio de tema re-crea la instancia.
@@ -413,6 +418,9 @@ function EchartsRenderer({ spec, rows, className = '' }: ChartRendererProps) {
     if (!containerRef.current) return
     const chart = echarts.init(containerRef.current, theme, { renderer: 'canvas' })
     instanceRef.current = chart
+    chart.on('click', (params) => {
+      if (typeof params.name === 'string' && params.name) onDataClickRef.current?.(params.name)
+    })
 
     const onResize = () => chart.resize()
     window.addEventListener('resize', onResize)
