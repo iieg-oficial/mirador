@@ -2,6 +2,8 @@
 // (espejo del esquema Pydantic del backend en charts/spec.py): describe qué
 // datos usa la gráfica y cómo se visualiza, independiente del renderer.
 
+import type { Tag } from '@/types/tags'
+
 export type ChartType =
   | 'line'
   | 'bar'
@@ -170,6 +172,7 @@ export interface Chart {
   chart_type: ChartType
   chart_spec: ChartSpec
   status: ChartStatus
+  tags: Tag[]
   created_by: string | null
   created_by_email: string | null
   created_at: string
@@ -180,6 +183,7 @@ export interface ChartCreate {
   name: string
   description?: string | null
   chart_spec: ChartSpec
+  tag_ids?: string[]
 }
 
 export interface ChartUpdate {
@@ -188,6 +192,7 @@ export interface ChartUpdate {
   chart_spec?: ChartSpec
   change_comment?: string | null
   status?: ChartStatus
+  tag_ids?: string[]
 }
 
 export interface ChartVersion {

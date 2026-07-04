@@ -17,6 +17,9 @@ import type { ChartPreviewResult } from './api'
 import { ChartRenderer } from './ChartRenderer'
 import { ChartTypePicker } from './ChartTypePicker'
 import { SandboxEditor } from './SandboxEditor'
+import { TagBadge } from '@/components/shared/TagBadge'
+import { TagPicker } from '@/components/shared/TagPicker'
+import { TagFilterBar } from '@/features/tags/TagFilterBar'
 import { draftToFilter, filterToDraft } from './filters'
 import type { FilterDraft } from './filters'
 import type {
@@ -417,6 +420,14 @@ function ChartCard({
         <p className="mb-2 text-xs text-gray-500 line-clamp-2">{chart.description}</p>
       )}
 
+      {chart.tags.length > 0 && (
+        <div className="mb-2 flex flex-wrap gap-1">
+          {chart.tags.map((t) => (
+            <TagBadge key={t.id} tag={t} />
+          ))}
+        </div>
+      )}
+
       <p className="text-xs text-gray-400">
         Dataset:{' '}
         <span className="font-medium text-gray-600">{dataset?.name ?? '—'}</span>
@@ -498,6 +509,7 @@ interface BuilderState {
   showLegend: boolean
   legendPosition: LegendPosition
   showDownload: boolean
+  tagIds: string[]
 }
 
 const BUILDER_DEFAULTS: BuilderState = {
@@ -519,12 +531,18 @@ const BUILDER_DEFAULTS: BuilderState = {
   showLegend: true,
   legendPosition: 'top',
   showDownload: false,
+  tagIds: [],
 }
 
 // Vuelca una spec al estado del builder visual (best-effort: encodings de
 // tooltip/size u ordenamientos múltiples del modo avanzado no tienen control
 // visual y se conservan solo mientras se edita en JSON).
-function stateFromSpec(spec: ChartSpec, name: string, description: string): BuilderState {
+function stateFromSpec(
+  spec: ChartSpec,
+  name: string,
+  description: string,
+  tagIds: string[] = [],
+): BuilderState {
   const aggregations: Record<string, Aggregation | ''> = {}
   for (const e of spec.encodings.y) {
     if (e.aggregation) aggregations[e.field] = e.aggregation
@@ -548,11 +566,17 @@ function stateFromSpec(spec: ChartSpec, name: string, description: string): Buil
     showLegend: spec.interactions.legend,
     legendPosition: spec.style.legend_position,
     showDownload: spec.interactions.download,
+    tagIds,
   }
 }
 
 function builderFromChart(chart: Chart): BuilderState {
-  return stateFromSpec(chart.chart_spec, chart.name, chart.description ?? '')
+  return stateFromSpec(
+    chart.chart_spec,
+    chart.name,
+    chart.description ?? '',
+    chart.tags.map((t) => t.id),
+  )
 }
 
 // Construye la ChartSpec canónica desde el estado del builder visual.
@@ -765,12 +789,14 @@ function ChartBuilder({
           description: state.description || null,
           chart_spec: chartSpec,
           change_comment: changeComment || null,
+          tag_ids: state.tagIds,
         })
       }
       return createChart({
         name: state.name,
         description: state.description || null,
         chart_spec: chartSpec,
+        tag_ids: state.tagIds,
       })
     },
     onSuccess: () => {
@@ -855,6 +881,10 @@ function ChartBuilder({
             onChange={(v) => changeChartType(v as ChartType)}
             options={CHART_TYPES.map((t) => ({ value: t, label: CHART_TYPE_LABELS[t] }))}
           />
+        </div>
+        <div className="mt-3 max-w-sm">
+          <label className="mb-1 block text-xs font-semibold text-gray-600">Etiquetas</label>
+          <TagPicker value={state.tagIds} onChange={(v) => set('tagIds', v)} />
         </div>
       </div>
 
@@ -1379,15 +1409,17 @@ export function GraficasPage() {
   const [tab, setTab] = useState<Tab>('list')
   const [editingChart, setEditingChart] = useState<Chart | null>(null)
   const [pickerType, setPickerType] = useState<ChartType | null>(null)
+  const [q, setQ] = useState('')
+  const [tagIds, setTagIds] = useState<string[]>([])
 
   const { data: charts = [], isLoading: loadingCharts } = useQuery({
-    queryKey: ['charts'],
-    queryFn: listCharts,
+    queryKey: ['charts', q, tagIds],
+    queryFn: () => listCharts({ q, tagIds }),
   })
 
   const { data: datasets = [] } = useQuery({
     queryKey: ['datasets'],
-    queryFn: listDatasets,
+    queryFn: () => listDatasets(),
   })
 
   const deleteMutation = useMutation({
@@ -1480,6 +1512,17 @@ export function GraficasPage() {
       <div className="flex-1 overflow-hidden">
         {tab === 'list' && (
           <div className="h-full overflow-y-auto p-6">
+            <div className="mb-4 flex flex-wrap items-center gap-3">
+              <input
+                type="text"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="Buscar gráfica…"
+                className="w-64 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm focus:border-iieg-400 focus:outline-none"
+              />
+              <TagFilterBar value={tagIds} onChange={setTagIds} />
+            </div>
+
             {loadingCharts && (
               <p className="text-sm text-gray-400">Cargando gráficas…</p>
             )}
