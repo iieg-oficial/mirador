@@ -9,9 +9,10 @@ import uuid
 
 import sqlalchemy as sa
 from sqlalchemy import Column, Index, Text
-from sqlmodel import Field
+from sqlmodel import Field, Relationship
 
 from app.core.db_types import JSONVariant
+from app.modules.tags.models import DatasetTag, Tag
 from app.shared.models import UUIDAuditBase
 
 
@@ -50,9 +51,8 @@ class Dataset(UUIDAuditBase, table=True):
     parameters_schema: dict | None = Field(
         default=None, sa_column=Column(JSONVariant, nullable=True)
     )
-    columns_schema: dict | None = Field(
-        default=None, sa_column=Column(JSONVariant, nullable=True)
-    )
+    columns_schema: dict | None = Field(default=None, sa_column=Column(JSONVariant, nullable=True))
     cache_ttl_seconds: int = Field(default=300)
     max_rows: int = Field(default=1000)
     status: DatasetStatus = Field(default=DatasetStatus.draft)
+    tags: list[Tag] = Relationship(link_model=DatasetTag)

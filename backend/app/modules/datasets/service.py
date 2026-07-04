@@ -14,7 +14,7 @@ from typing import Any
 
 import psycopg
 from fastapi import HTTPException, status
-from sqlmodel import Session, select
+from sqlmodel import Session, col, or_, select
 
 from app.core.cache import get_cached, invalidate, set_cached
 from app.core.db_external import make_conninfo
@@ -28,6 +28,8 @@ from app.modules.datasets.schemas import (
     DatasetUpdate,
     PreviewResult,
 )
+from app.modules.tags import service as tags_service
+from app.modules.tags.models import DatasetTag
 
 _POSTGRES_ENGINES = {ConnectionEngine.postgresql, ConnectionEngine.postgis}
 
@@ -41,8 +43,19 @@ _NAMED_PARAM_RE = re.compile(r"(?<!:):([a-zA-Z_][a-zA-Z0-9_]*)")
 # ── Inferencia semántica de columnas ─────────────────────────────────────────
 
 _NUMERIC_TYPES = {
-    "int2", "int4", "int8", "smallint", "integer", "bigint",
-    "numeric", "decimal", "float4", "float8", "real", "double precision", "money",
+    "int2",
+    "int4",
+    "int8",
+    "smallint",
+    "integer",
+    "bigint",
+    "numeric",
+    "decimal",
+    "float4",
+    "float8",
+    "real",
+    "double precision",
+    "money",
 }
 _TEMPORAL_TYPES = {"date", "time", "timetz", "timestamp", "timestamptz", "interval"}
 _BOOL_TYPES = {"bool", "boolean"}
@@ -106,12 +119,20 @@ def merge_manual_columns(current_schema: dict | None, manual: dict) -> dict:
 # ── CRUD ─────────────────────────────────────────────────────────────────────
 
 
-def list_datasets(session: Session) -> list[Dataset]:
-    return list(
-        session.exec(
-            select(Dataset).where(Dataset.status != DatasetStatus.archived)
-        ).all()
-    )
+def list_datasets(
+    session: Session, q: str | None = None, tag_ids: list[uuid.UUID] | None = None
+) -> list[Dataset]:
+    query = select(Dataset).where(Dataset.status != DatasetStatus.archived)
+    if q:
+        pattern = f"%{q}%"
+        query = query.where(
+            or_(col(Dataset.name).ilike(pattern), col(Dataset.description).ilike(pattern))
+        )
+    for tag_id in tag_ids or []:
+        query = query.where(
+            col(Dataset.id).in_(select(DatasetTag.dataset_id).where(DatasetTag.tag_id == tag_id))
+        )
+    return list(session.exec(query).all())
 
 
 def get_dataset(session: Session, dataset_id: uuid.UUID) -> Dataset | None:
@@ -123,6 +144,7 @@ def create_dataset(
 ) -> Dataset:
     validate_sql(data.sql_query)
     payload = data.model_dump()
+    tag_ids = payload.pop("tag_ids")
     payload["sql_query"] = normalize_sql(payload["sql_query"])
     cols, params = _infer_schema(connection, payload["sql_query"])
     obj = Dataset(
@@ -136,6 +158,8 @@ def create_dataset(
     session.add(obj)
     session.commit()
     session.refresh(obj)
+    tags_service.set_entity_tags(session, DatasetTag, "dataset_id", obj.id, tag_ids)
+    session.refresh(obj)
     return obj
 
 
@@ -144,6 +168,7 @@ def update_dataset(
 ) -> Dataset:
     fields = data.model_dump(exclude_unset=True)
     manual_columns = fields.pop("columns_schema", None)
+    tag_ids = fields.pop("tag_ids", None)
     if "sql_query" in fields:
         validate_sql(fields["sql_query"])
         fields["sql_query"] = normalize_sql(fields["sql_query"])
@@ -160,6 +185,8 @@ def update_dataset(
         setattr(obj, key, value)
     session.add(obj)
     session.commit()
+    if tag_ids is not None:
+        tags_service.set_entity_tags(session, DatasetTag, "dataset_id", obj.id, tag_ids)
     session.refresh(obj)
     invalidate(str(obj.id))
     return obj
@@ -262,9 +289,7 @@ def run_query(
     El playground no pasa dataset_id → nunca cachea.
     """
     if connection.engine not in _POSTGRES_ENGINES:
-        raise ValueError(
-            f"Ejecución no soportada para el motor '{connection.engine.value}'."
-        )
+        raise ValueError(f"Ejecución no soportada para el motor '{connection.engine.value}'.")
 
     # ── Cache hit ──────────────────────────────────────────────────────────────
     if dataset_id and cache_ttl_seconds > 0:
