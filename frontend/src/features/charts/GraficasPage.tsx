@@ -862,7 +862,12 @@ function ChartBuilder({
       <div className="flex flex-1 overflow-hidden">
         {mode === 'code' && (
           <div className="w-1/2 flex-shrink-0 border-r border-gray-100 bg-white">
-            <SandboxEditor value={code} onChange={setCode} columns={schemaColumns} />
+            <SandboxEditor
+              value={code}
+              onChange={setCode}
+              onRun={runPreview}
+              columns={schemaColumns}
+            />
           </div>
         )}
 
