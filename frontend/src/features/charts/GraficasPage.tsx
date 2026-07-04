@@ -25,6 +25,7 @@ import type {
   ChartSpec,
   ChartStatus,
   ChartType,
+  CodeEngine,
   FilterOperator,
   LegendPosition,
 } from '@/types/charts'
@@ -110,9 +111,11 @@ const ZONES_BY_TYPE: Record<ChartType, ZoneDef[]> = {
   ],
 }
 
-// Plantilla inicial del sandbox: una barra simple sobre las dos primeras columnas
-// del dataset, para que el usuario vea algo al entrar y sepa cómo se usa `rows`.
-const CODIGO_INICIAL = `// rows: filas del dataset · echarts: el módulo. Devuelve un option de ECharts.
+// Plantillas iniciales del sandbox: una barra simple sobre las dos primeras
+// columnas del dataset, para que el usuario vea algo al entrar y sepa cómo se
+// usa `rows` en cada motor.
+const CODIGO_INICIAL: Record<CodeEngine, string> = {
+  echarts: `// rows: filas del dataset · echarts: el módulo. Devuelve un option de ECharts.
 const cols = Object.keys(rows[0] ?? {})
 const [dim, val] = [cols[0], cols[1]]
 return {
@@ -121,7 +124,20 @@ return {
   yAxis: { type: 'value' },
   series: [{ type: 'bar', data: rows.map((r) => Number(r[val])) }],
 }
-`
+`,
+  plotly: `# rows: filas del dataset (lista de dicts). Deja la figura de Plotly en \`fig\`.
+import pandas as pd
+import plotly.express as px
+
+df = pd.DataFrame(rows)
+fig = px.bar(df, x=df.columns[0], y=df.columns[1])
+`,
+}
+
+/** ¿El código es una plantilla sin tocar (o vacío)? Si sí, se puede reemplazar. */
+function isCodePristine(code: string): boolean {
+  return !code.trim() || Object.values(CODIGO_INICIAL).includes(code)
+}
 
 // ── Helpers UI ────────────────────────────────────────────────────────────────
 
@@ -388,7 +404,11 @@ function ChartCard({
             ))}
           </select>
           <span className="rounded-full bg-iieg-100 px-2 py-0.5 text-[11px] font-medium text-iieg-700">
-            {chart.chart_spec.code ? 'Código' : CHART_TYPE_LABELS[chart.chart_type] ?? chart.chart_type}
+            {chart.chart_spec.code
+              ? chart.chart_spec.code_engine === 'plotly'
+                ? 'Código · Plotly'
+                : 'Código · ECharts'
+              : CHART_TYPE_LABELS[chart.chart_type] ?? chart.chart_type}
           </span>
         </span>
       </div>
@@ -583,12 +603,19 @@ function ChartBuilder({
   const [previewLoading, setPreviewLoading] = useState(false)
   const [previewError, setPreviewError] = useState<string | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
-  // Modo avanzado = sandbox de código (JS + ECharts) e historial (RF-12). Al
-  // editar una gráfica que ya es de código, se abre directo en ese modo.
+  // Modo avanzado = sandbox de código (JS·ECharts o Python·Plotly) e historial
+  // (RF-12). Al editar una gráfica que ya es de código, se abre directo ahí.
   const [mode, setMode] = useState<'visual' | 'code' | 'history'>(
     editingChart?.chart_spec.code ? 'code' : 'visual',
   )
   const [code, setCode] = useState<string>(editingChart?.chart_spec.code ?? '')
+  const [engine, setEngine] = useState<CodeEngine>(
+    editingChart?.chart_spec.code_engine ?? 'echarts',
+  )
+  // Spec con la que se corrió la última vista previa: el renderer usa este
+  // snapshot (no el código vivo del editor) para no re-ejecutar el código del
+  // usuario en cada tecleo — con Python (Pyodide) sería carísimo.
+  const [ranSpec, setRanSpec] = useState<ChartSpec | null>(null)
   const [changeComment, setChangeComment] = useState('')
 
   const set = useCallback(
@@ -662,10 +689,11 @@ function ChartBuilder({
     set(key, [...state[key], column])
   }
 
-  // Spec efectiva: en modo código lleva el JS del sandbox (gana sobre encodings);
-  // si no, la derivada del builder visual.
+  // Spec efectiva: en modo código lleva el código del sandbox y su motor (ganan
+  // sobre encodings); si no, la derivada del builder visual.
   const currentSpec = specFromState(state, schemaColumns)
-  const effectiveSpec: ChartSpec = mode === 'code' ? { ...currentSpec, code } : currentSpec
+  const effectiveSpec: ChartSpec =
+    mode === 'code' ? { ...currentSpec, code, code_engine: engine } : currentSpec
 
   // Preview por spec: el backend genera la consulta segura (agregación,
   // filtros y orden server-side) y devuelve solo las filas necesarias.
@@ -677,6 +705,7 @@ function ChartBuilder({
     try {
       const result = await previewSpec(effectiveSpec)
       setPreviewData(result)
+      setRanSpec(effectiveSpec)
     } catch (err) {
       setPreviewError((err as Error).message)
     } finally {
@@ -690,8 +719,17 @@ function ChartBuilder({
   // código sin nada escrito, se siembra una plantilla.
   function switchMode(next: 'visual' | 'code' | 'history') {
     if (next === mode) return
-    if (next === 'code' && !code.trim()) setCode(CODIGO_INICIAL)
+    if (next === 'code' && !code.trim()) setCode(CODIGO_INICIAL[engine])
     setMode(next)
+  }
+
+  // Cambio de motor (ECharts·JS ↔ Plotly·Python): si el código sigue siendo la
+  // plantilla sin tocar, se cambia a la del nuevo motor; si el usuario ya
+  // escribió algo, se respeta tal cual (que él decida cómo migrarlo).
+  function changeEngine(next: CodeEngine) {
+    if (next === engine) return
+    if (isCodePristine(code)) setCode(CODIGO_INICIAL[next])
+    setEngine(next)
   }
 
   // Al editar una gráfica guardada ya hay un dataset seleccionado: disparar el
@@ -853,7 +891,9 @@ function ChartBuilder({
         )}
         {mode === 'code' && (
           <span className="ml-2 text-[11px] text-gray-400">
-            JavaScript con ECharts sobre las filas del dataset; se ejecuta en tu navegador.
+            {engine === 'plotly'
+              ? 'Python con Plotly sobre las filas del dataset; se ejecuta en tu navegador (Pyodide).'
+              : 'JavaScript con ECharts sobre las filas del dataset; se ejecuta en tu navegador.'}
           </span>
         )}
       </div>
@@ -867,6 +907,8 @@ function ChartBuilder({
               onChange={setCode}
               onRun={runPreview}
               columns={schemaColumns}
+              engine={engine}
+              onEngineChange={changeEngine}
             />
           </div>
         )}
@@ -1024,7 +1066,12 @@ function ChartBuilder({
 
             {!previewError && showChart && (
               <div className="h-full min-h-[300px] rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-                <ChartRenderer spec={effectiveSpec} rows={previewData!.rows} />
+                {/* En modo código se renderiza el snapshot de la última corrida,
+                 * no el código vivo del editor (ver ranSpec). */}
+                <ChartRenderer
+                  spec={mode === 'code' && ranSpec ? ranSpec : effectiveSpec}
+                  rows={previewData!.rows}
+                />
               </div>
             )}
 

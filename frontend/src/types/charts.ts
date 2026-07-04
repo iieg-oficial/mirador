@@ -15,6 +15,8 @@ export type ChartType =
 
 export type Aggregation = 'sum' | 'avg' | 'min' | 'max' | 'count' | 'count_distinct'
 
+export type CodeEngine = 'echarts' | 'plotly'
+
 export type FilterOperator =
   | '='
   | '!='
@@ -128,7 +130,7 @@ export interface ChartSpec {
   // filas del dataset. Si está presente, gana sobre encodings/chart_type.
   code?: string | null
   // Motor del código: 'echarts' = JS en el navegador; 'plotly' = Python (Pyodide).
-  code_engine?: 'echarts' | 'plotly'
+  code_engine?: CodeEngine
 }
 
 /** Spec vacía con los mismos defaults que el backend. */
