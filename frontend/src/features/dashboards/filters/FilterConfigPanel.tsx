@@ -36,7 +36,7 @@ function textToOptions(text: string): FilterOption[] {
 }
 
 export function FilterConfigPanel({ filters, onChange, chartItems }: Props) {
-  const { data: datasets = [] } = useQuery({ queryKey: ['datasets'], queryFn: listDatasets })
+  const { data: datasets = [] } = useQuery({ queryKey: ['datasets'], queryFn: () => listDatasets() })
 
   const patch = (i: number, p: Partial<DashboardFilter>) =>
     onChange(filters.map((f, j) => (j === i ? { ...f, ...p } : f)))

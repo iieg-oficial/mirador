@@ -105,7 +105,7 @@ export function SqlPlayground({ fixedConnectionId, initialSql = '', onSave }: Sq
 
   const { data: conexiones = [] } = useQuery({
     queryKey: ['conexiones'],
-    queryFn: listConexiones,
+    queryFn: () => listConexiones(),
     enabled: !fixedConnectionId,
   })
 
