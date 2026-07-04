@@ -148,6 +148,9 @@ class ChartSpec(BaseModel):
     # Cuando está presente, los encodings no aplican y el backend solo entrega
     # las filas crudas del dataset (query_builder).
     code: str | None = Field(default=None, max_length=20_000)
+    # Motor de la gráfica de código: 'echarts' ejecuta JS en el navegador;
+    # 'plotly' ejecuta Python (Pyodide) y renderiza la figura con plotly.js.
+    code_engine: Literal["echarts", "plotly"] = "echarts"
 
     @field_validator("overrides")
     @classmethod

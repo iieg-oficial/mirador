@@ -124,9 +124,11 @@ export interface ChartSpec {
   interactions: InteractionsSpec
   style: StyleSpec
   overrides?: OverridesSpec | null
-  // Gráfica "de código": JS que se ejecuta para armar el EChartsOption a partir
-  // de las filas del dataset. Si está presente, gana sobre encodings/chart_type.
+  // Gráfica "de código": se ejecuta para armar la visualización a partir de las
+  // filas del dataset. Si está presente, gana sobre encodings/chart_type.
   code?: string | null
+  // Motor del código: 'echarts' = JS en el navegador; 'plotly' = Python (Pyodide).
+  code_engine?: 'echarts' | 'plotly'
 }
 
 /** Spec vacía con los mismos defaults que el backend. */

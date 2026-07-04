@@ -48,6 +48,11 @@ def get_chart(session: Session, chart_id: uuid.UUID) -> Chart | None:
     return session.get(Chart, chart_id)
 
 
+def _renderer_for(spec: ChartSpec) -> str:
+    """Las gráficas de código Python se materializan con Plotly; el resto con ECharts."""
+    return "plotly" if spec.code and spec.code_engine == "plotly" else "echarts"
+
+
 def create_chart(
     session: Session, data: ChartCreate, user: CurrentUser, dataset: Dataset
 ) -> Chart:
@@ -56,7 +61,7 @@ def create_chart(
         dataset_id=data.chart_spec.data.dataset_id,
         name=data.name,
         description=data.description,
-        renderer="echarts",
+        renderer=_renderer_for(data.chart_spec),
         chart_type=data.chart_spec.visual.chart_type,
         chart_spec=data.chart_spec.model_dump(mode="json"),
         created_by=user.sub,
@@ -106,6 +111,7 @@ def update_chart(
         obj.chart_spec = new_spec
         obj.dataset_id = data.chart_spec.data.dataset_id
         obj.chart_type = data.chart_spec.visual.chart_type
+        obj.renderer = _renderer_for(data.chart_spec)
     fields = data.model_dump(exclude_unset=True, exclude={"chart_spec", "change_comment"})
     if isinstance(fields.get("status"), ChartStatus):
         fields["status"] = fields["status"].value
