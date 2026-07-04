@@ -1,3 +1,5 @@
+import type { Tag } from '@/types/tags'
+
 export type ConnectionEngine = 'postgresql' | 'postgis' | 'duckdb'
 export type ConnectionStatus = 'activa' | 'inactiva' | 'error' | 'archivada'
 export type SchemaObjectType = 'table' | 'view' | 'materialized_view'
@@ -15,6 +17,7 @@ export interface Connection {
   read_only: boolean
   status: ConnectionStatus
   last_test_error: string | null
+  tags: Tag[]
   created_by: string | null
   created_by_email: string | null
   created_at: string
@@ -32,6 +35,7 @@ export interface ConnectionCreate {
   password: string
   ssl_enabled: boolean
   read_only: boolean
+  tag_ids?: string[]
 }
 
 export interface ConnectionUpdate {
@@ -45,6 +49,7 @@ export interface ConnectionUpdate {
   password?: string
   ssl_enabled?: boolean
   read_only?: boolean
+  tag_ids?: string[]
 }
 
 export interface ConnectionTestResult {

@@ -3,6 +3,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { listConexiones, testConexion, deleteConexion } from './api'
 import { ConexionForm } from './ConexionForm'
 import { SchemaExplorer } from './SchemaExplorer'
+import { TagBadge } from '@/components/shared/TagBadge'
+import { TagFilterBar } from '@/features/tags/TagFilterBar'
 import type { Connection, ConnectionStatus } from '@/types/connections'
 
 // ── Semáforo ──────────────────────────────────────────────────────────────────
@@ -100,6 +102,14 @@ function ConexionCard({
         </p>
       )}
 
+      {connection.tags.length > 0 && (
+        <div className="mt-1.5 flex flex-wrap gap-1">
+          {connection.tags.map((t) => (
+            <TagBadge key={t.id} tag={t} />
+          ))}
+        </div>
+      )}
+
       {/* Acciones */}
       <div
         className="mt-3 flex items-center gap-1"
@@ -171,16 +181,18 @@ export function ConexionesPage() {
   const qc = useQueryClient()
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [formState, setFormState] = useState<FormState>(null)
+  const [q, setQ] = useState('')
+  const [tagIds, setTagIds] = useState<string[]>([])
 
   const { data: conexiones, isLoading, error } = useQuery({
-    queryKey: ['conexiones'],
-    queryFn: listConexiones,
+    queryKey: ['conexiones', q, tagIds],
+    queryFn: () => listConexiones({ q, tagIds }),
   })
 
   const testMutation = useMutation({
     mutationFn: testConexion,
     onSuccess: (result, id) => {
-      qc.setQueryData<Connection[]>(['conexiones'], (prev) =>
+      qc.setQueriesData<Connection[]>({ queryKey: ['conexiones'] }, (prev) =>
         prev?.map((c) =>
           c.id === id ? { ...c, status: result.status, last_test_error: result.detail } : c,
         ),
@@ -191,7 +203,7 @@ export function ConexionesPage() {
   const deleteMutation = useMutation({
     mutationFn: deleteConexion,
     onSuccess: (_, id) => {
-      qc.setQueryData<Connection[]>(['conexiones'], (prev) =>
+      qc.setQueriesData<Connection[]>({ queryKey: ['conexiones'] }, (prev) =>
         prev?.filter((c) => c.id !== id),
       )
       if (selectedId === id) setSelectedId(null)
@@ -240,6 +252,8 @@ export function ConexionesPage() {
                   </svg>
                   <input
                     type="text"
+                    value={q}
+                    onChange={(e) => setQ(e.target.value)}
                     placeholder="Buscar conexión…"
                     className="flex-1 bg-transparent text-xs text-gray-700 placeholder-gray-400 focus:outline-none"
                   />
@@ -249,6 +263,9 @@ export function ConexionesPage() {
                   <option>Activas</option>
                   <option>Con error</option>
                 </select>
+              </div>
+              <div className="mt-2">
+                <TagFilterBar value={tagIds} onChange={setTagIds} />
               </div>
             </div>
             <div className="p-3">

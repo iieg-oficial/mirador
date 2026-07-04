@@ -1,7 +1,8 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { createConexion, updateConexion } from './api'
+import { TagPicker } from '@/components/shared/TagPicker'
 import type { Connection, ConnectionEngine } from '@/types/connections'
 
 interface FormValues {
@@ -88,13 +89,15 @@ export function ConexionForm({ editing, onClose }: Props) {
     if (!isEdit) setValue('port', DEFAULT_PORTS[engine] ?? 5432)
   }, [engine, isEdit, setValue])
 
+  const [tagIds, setTagIds] = useState<string[]>(editing?.tags.map((t) => t.id) ?? [])
+
   const mutation = useMutation({
     mutationFn: async (values: FormValues) => {
       if (isEdit) {
         const { password, ...rest } = values
-        return updateConexion(editing.id, password ? { ...rest, password } : rest)
+        return updateConexion(editing.id, { ...(password ? { ...rest, password } : rest), tag_ids: tagIds })
       }
-      return createConexion(values)
+      return createConexion({ ...values, tag_ids: tagIds })
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['conexiones'] })
@@ -230,6 +233,10 @@ export function ConexionForm({ editing, onClose }: Props) {
                 Solo lectura
               </label>
             </div>
+
+            <Field label="Etiquetas">
+              <TagPicker value={tagIds} onChange={setTagIds} />
+            </Field>
           </div>
 
           {mutation.error && (
