@@ -1,8 +1,9 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query'
 import { createDataset, updateDataset } from './api'
 import { listConexiones } from '@/features/connections/api'
+import { TagPicker } from '@/components/shared/TagPicker'
 import type { Dataset, DatasetCreate, DatasetUpdate } from '@/types/datasets'
 
 interface FormValues {
@@ -37,7 +38,7 @@ export function DatasetForm({ editing, prefill, onClose }: Props) {
 
   const { data: conexiones = [] } = useQuery({
     queryKey: ['conexiones'],
-    queryFn: listConexiones,
+    queryFn: () => listConexiones(),
   })
 
   const {
@@ -73,6 +74,8 @@ export function DatasetForm({ editing, prefill, onClose }: Props) {
     if (!isEdit) setValue('slug', slugify(nameValue))
   }, [nameValue, isEdit, setValue])
 
+  const [tagIds, setTagIds] = useState<string[]>(editing?.tags.map((t) => t.id) ?? [])
+
   const mutation = useMutation({
     mutationFn: (values: FormValues) => {
       if (isEdit) {
@@ -85,6 +88,7 @@ export function DatasetForm({ editing, prefill, onClose }: Props) {
           sql_query: values.sql_query,
           max_rows: values.max_rows,
           cache_ttl_seconds: values.cache_ttl_seconds,
+          tag_ids: tagIds,
         }
         return updateDataset(editing!.id, payload)
       }
@@ -96,6 +100,7 @@ export function DatasetForm({ editing, prefill, onClose }: Props) {
         sql_query: values.sql_query,
         max_rows: values.max_rows,
         cache_ttl_seconds: values.cache_ttl_seconds,
+        tag_ids: tagIds,
       }
       return createDataset(payload)
     },
@@ -218,6 +223,11 @@ export function DatasetForm({ editing, prefill, onClose }: Props) {
                 className="rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-iieg-500 focus:outline-none"
               />
             </div>
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium text-gray-700">Etiquetas</label>
+            <TagPicker value={tagIds} onChange={setTagIds} />
           </div>
 
           {mutation.isError && (

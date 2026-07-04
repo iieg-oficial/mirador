@@ -4,6 +4,8 @@ import { listConexiones } from '@/features/connections/api'
 import { downloadCsv } from '@/lib/csv'
 import { listDatasets, deleteDataset, runPlayground } from './api'
 import { DatasetForm } from './DatasetForm'
+import { TagBadge } from '@/components/shared/TagBadge'
+import { TagFilterBar } from '@/features/tags/TagFilterBar'
 import type { Dataset, DatasetStatus, PreviewResult } from '@/types/datasets'
 
 // ── Badge de estado ───────────────────────────────────────────────────────────
@@ -122,9 +124,11 @@ function DatasetList({
   onOpenInPlayground: (d: Dataset) => void
 }) {
   const qc = useQueryClient()
+  const [q, setQ] = useState('')
+  const [tagIds, setTagIds] = useState<string[]>([])
   const { data: datasets = [], isLoading, error } = useQuery({
-    queryKey: ['datasets'],
-    queryFn: listDatasets,
+    queryKey: ['datasets', q, tagIds],
+    queryFn: () => listDatasets({ q, tagIds }),
   })
 
   const deleteMutation = useMutation({
@@ -135,25 +139,34 @@ function DatasetList({
   if (isLoading) return <p className="py-6 text-center text-sm text-gray-400">Cargando…</p>
   if (error) return <p className="py-6 text-center text-sm text-red-600">Error al cargar datasets.</p>
 
-  if (datasets.length === 0) {
-    return (
-      <div className="flex h-64 flex-col items-center justify-center gap-3 text-center">
-        <svg className="h-12 w-12 text-gray-200" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1}
-            d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-        </svg>
-        <div>
-          <p className="text-sm font-medium text-gray-500">Sin datasets guardados</p>
-          <p className="mt-0.5 text-xs text-gray-400">
-            Ve al Playground SQL, escribe una consulta y guárdala como dataset.
-          </p>
-        </div>
-      </div>
-    )
-  }
-
   return (
-    <div className="overflow-hidden rounded-xl border border-gray-100">
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-3">
+        <input
+          type="text"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Buscar dataset…"
+          className="w-64 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm focus:border-iieg-400 focus:outline-none"
+        />
+        <TagFilterBar value={tagIds} onChange={setTagIds} />
+      </div>
+
+      {datasets.length === 0 ? (
+        <div className="flex h-64 flex-col items-center justify-center gap-3 text-center">
+          <svg className="h-12 w-12 text-gray-200" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1}
+              d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+          <div>
+            <p className="text-sm font-medium text-gray-500">Sin datasets guardados</p>
+            <p className="mt-0.5 text-xs text-gray-400">
+              Ve al Playground SQL, escribe una consulta y guárdala como dataset.
+            </p>
+          </div>
+        </div>
+      ) : (
+      <div className="overflow-hidden rounded-xl border border-gray-100">
       <table className="min-w-full text-sm">
         <thead className="bg-gray-50 text-xs text-gray-500">
           <tr>
@@ -173,6 +186,13 @@ function DatasetList({
                   <p className="mt-0.5 max-w-xs truncate text-xs font-normal text-gray-400">
                     {ds.description}
                   </p>
+                )}
+                {ds.tags.length > 0 && (
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {ds.tags.map((t) => (
+                      <TagBadge key={t.id} tag={t} />
+                    ))}
+                  </div>
                 )}
               </td>
               <td className="px-4 py-3"><StatusBadge status={ds.status} /></td>
@@ -220,6 +240,8 @@ function DatasetList({
           ))}
         </tbody>
       </table>
+      </div>
+      )}
     </div>
   )
 }
@@ -247,7 +269,7 @@ function Playground({
 
   const { data: conexiones = [] } = useQuery({
     queryKey: ['conexiones'],
-    queryFn: listConexiones,
+    queryFn: () => listConexiones(),
   })
 
   const runMutation = useMutation({

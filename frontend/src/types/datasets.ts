@@ -1,3 +1,5 @@
+import type { Tag } from '@/types/tags'
+
 export type DatasetStatus = 'draft' | 'validated' | 'published' | 'archived'
 
 // Tipo semántico inferido por el backend (editable a mano vía DatasetUpdate).
@@ -42,6 +44,7 @@ export interface Dataset {
   cache_ttl_seconds: number
   max_rows: number
   status: DatasetStatus
+  tags: Tag[]
   created_by: string | null
   created_by_email: string | null
   created_at: string
@@ -56,6 +59,7 @@ export interface DatasetCreate {
   sql_query: string
   cache_ttl_seconds?: number
   max_rows?: number
+  tag_ids?: string[]
 }
 
 export interface DatasetUpdate {
@@ -65,6 +69,7 @@ export interface DatasetUpdate {
   cache_ttl_seconds?: number
   max_rows?: number
   status?: DatasetStatus
+  tag_ids?: string[]
 }
 
 export interface PlaygroundRequest {
