@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from app.modules.charts.models import ChartStatus
 from app.modules.charts.spec import ChartSpec
 from app.modules.datasets.schemas import PreviewResult
+from app.modules.tags.schemas import TagRead
 
 
 class ChartSpecPayload(BaseModel):
@@ -39,6 +40,7 @@ class ChartCreate(BaseModel):
     description: str | None = Field(default=None, max_length=500)
     # El dataset y el tipo viven DENTRO de la spec (única fuente de verdad).
     chart_spec: ChartSpec
+    tag_ids: list[uuid.UUID] = Field(default_factory=list)
 
 
 class ChartUpdate(BaseModel):
@@ -47,6 +49,7 @@ class ChartUpdate(BaseModel):
     chart_spec: ChartSpec | None = None
     # Comentario opcional que queda registrado en la versión (RF-12).
     change_comment: str | None = Field(default=None, max_length=500)
+    tag_ids: list[uuid.UUID] | None = None
     # Estado editable (RF-10): borrador / en revisión / aprobada / archivada.
     status: ChartStatus | None = None
 
@@ -73,6 +76,7 @@ class ChartRead(BaseModel):
     chart_type: str
     chart_spec: dict[str, Any]
     status: str
+    tags: list[TagRead] = Field(default_factory=list)
     created_by: str | None
     created_by_email: str | None
     created_at: datetime
