@@ -426,9 +426,25 @@ interface ChartRendererProps {
   onExportReady?: (info: ChartExportInfo) => void
 }
 
+// Gráfica de código: ejecuta el JS del usuario (herramienta interna, sin la
+// restricción RNF-01) y devuelve el EChartsOption. En scope: `rows` (filas del
+// dataset) y `echarts` (el módulo). Debe `return` un objeto option.
+function runUserOption(code: string, rows: Record<string, unknown>[]): EChartsOption {
+  const fn = new Function('rows', 'echarts', code) as (
+    r: Record<string, unknown>[],
+    e: typeof echarts,
+  ) => unknown
+  const option = fn(rows, echarts)
+  if (!option || typeof option !== 'object') {
+    throw new Error('El código debe devolver (return) un objeto `option` de ECharts.')
+  }
+  return option as EChartsOption
+}
+
 function EchartsRenderer({ spec, rows, className = '', onDataClick, onExportReady }: ChartRendererProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const instanceRef = useRef<ECharts | null>(null)
+  const [codeError, setCodeError] = useState<string | null>(null)
   const onDataClickRef = useRef(onDataClick)
   onDataClickRef.current = onDataClick
   const onExportReadyRef = useRef(onExportReady)
@@ -464,8 +480,19 @@ function EchartsRenderer({ spec, rows, className = '', onDataClick, onExportRead
 
   // Actualizar opciones cuando cambian los datos o la configuración
   useEffect(() => {
-    if (!instanceRef.current) return
-    instanceRef.current.setOption(applyOverrides(buildOption(spec, rows), spec), true)
+    const chart = instanceRef.current
+    if (!chart) return
+    try {
+      const option = spec.code
+        ? runUserOption(spec.code, rows)
+        : applyOverrides(buildOption(spec, rows), spec)
+      chart.clear()
+      chart.setOption(option, true)
+      setCodeError(null)
+    } catch (err) {
+      chart.clear()
+      setCodeError(err instanceof Error ? err.message : String(err))
+    }
     onExportReadyRef.current?.({
       getPng: () => instanceRef.current?.getDataURL({ type: 'png', pixelRatio: 2, backgroundColor: '#fff' }) ?? null,
       rows,
@@ -476,6 +503,13 @@ function EchartsRenderer({ spec, rows, className = '', onDataClick, onExportRead
   return (
     <div className={`relative h-full w-full ${className}`}>
       <div ref={containerRef} className="h-full w-full" />
+      {codeError && (
+        <div className="absolute inset-0 flex items-center justify-center bg-white/90 p-4">
+          <pre className="max-h-full overflow-auto whitespace-pre-wrap rounded-lg bg-red-50 p-3 text-xs text-red-700">
+            {codeError}
+          </pre>
+        </div>
+      )}
       {/* CSV de la gráfica (§7): la tabla ya tiene su propio botón; el resto de
        * tipos ECharts lo obtienen aquí, mismo gate que el PNG del toolbox. */}
       {spec.interactions.download && (
@@ -492,6 +526,8 @@ function EchartsRenderer({ spec, rows, className = '', onDataClick, onExportRead
 }
 
 export function ChartRenderer(props: ChartRendererProps) {
+  // Una gráfica de código siempre se materializa con ECharts (el JS arma el option).
+  if (props.spec.code) return <EchartsRenderer {...props} />
   // table y kpi se renderizan como componentes React; el resto con ECharts.
   switch (props.spec.visual.chart_type) {
     case 'table':

@@ -80,6 +80,29 @@ def build_query(spec: ChartSpec, dataset: Dataset) -> tuple[str, dict[str, Any],
     if not known:
         raise ValueError("El dataset no tiene columnas inferidas; valida el SQL primero.")
 
+    # Gráfica de código: no hay encodings; el JS del frontend arma el
+    # EChartsOption. Aquí se le entregan las filas crudas del dataset (SELECT *),
+    # respetando filtros y orden (p.ej. los filtros globales que inyecta un tablero).
+    if spec.code and spec.code.strip():
+        referenced = {f.field for f in spec.data.filters} | {s.field for s in spec.data.sort}
+        unknown = sorted(referenced - known)
+        if unknown:
+            raise ValueError(f"Columnas inexistentes en el dataset: {', '.join(unknown)}.")
+        code_params: dict[str, Any] = {}
+        code_where = [
+            _filter_clause(f, i, code_params) for i, f in enumerate(spec.data.filters)
+        ]
+        code_sql = f"SELECT * FROM ({normalize_sql(dataset.sql_query)}) AS _ds"
+        if code_where:
+            code_sql += f" WHERE {' AND '.join(code_where)}"
+        if spec.data.sort:
+            order = ", ".join(
+                f"{_quote(s.field)} {'DESC' if s.direction == 'desc' else 'ASC'}"
+                for s in spec.data.sort
+            )
+            code_sql += f" ORDER BY {order}"
+        return code_sql, code_params, min(spec.data.limit, dataset.max_rows)
+
     selects = _select_encodings(spec)
     if not selects:
         raise ValueError("La spec no referencia ninguna columna en los encodings.")

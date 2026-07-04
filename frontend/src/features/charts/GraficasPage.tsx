@@ -16,7 +16,7 @@ import {
 import type { ChartPreviewResult } from './api'
 import { ChartRenderer } from './ChartRenderer'
 import { ChartTypePicker } from './ChartTypePicker'
-import { SpecEditor } from './SpecEditor'
+import { SandboxEditor } from './SandboxEditor'
 import { draftToFilter, filterToDraft } from './filters'
 import type { FilterDraft } from './filters'
 import type {
@@ -109,6 +109,19 @@ const ZONES_BY_TYPE: Record<ChartType, ZoneDef[]> = {
     { slot: 'y', label: 'Métrica', single: true, required: true },
   ],
 }
+
+// Plantilla inicial del sandbox: una barra simple sobre las dos primeras columnas
+// del dataset, para que el usuario vea algo al entrar y sepa cómo se usa `rows`.
+const CODIGO_INICIAL = `// rows: filas del dataset · echarts: el módulo. Devuelve un option de ECharts.
+const cols = Object.keys(rows[0] ?? {})
+const [dim, val] = [cols[0], cols[1]]
+return {
+  tooltip: {},
+  xAxis: { type: 'category', data: rows.map((r) => r[dim]) },
+  yAxis: { type: 'value' },
+  series: [{ type: 'bar', data: rows.map((r) => Number(r[val])) }],
+}
+`
 
 // ── Helpers UI ────────────────────────────────────────────────────────────────
 
@@ -375,7 +388,7 @@ function ChartCard({
             ))}
           </select>
           <span className="rounded-full bg-iieg-100 px-2 py-0.5 text-[11px] font-medium text-iieg-700">
-            {CHART_TYPE_LABELS[chart.chart_type] ?? chart.chart_type}
+            {chart.chart_spec.code ? 'Código' : CHART_TYPE_LABELS[chart.chart_type] ?? chart.chart_type}
           </span>
         </span>
       </div>
@@ -570,9 +583,12 @@ function ChartBuilder({
   const [previewLoading, setPreviewLoading] = useState(false)
   const [previewError, setPreviewError] = useState<string | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
-  // Modo avanzado (RF-04) e historial de versiones (RF-12).
-  const [mode, setMode] = useState<'visual' | 'json' | 'history'>('visual')
-  const [advancedSpec, setAdvancedSpec] = useState<ChartSpec | null>(null)
+  // Modo avanzado = sandbox de código (JS + ECharts) e historial (RF-12). Al
+  // editar una gráfica que ya es de código, se abre directo en ese modo.
+  const [mode, setMode] = useState<'visual' | 'code' | 'history'>(
+    editingChart?.chart_spec.code ? 'code' : 'visual',
+  )
+  const [code, setCode] = useState<string>(editingChart?.chart_spec.code ?? '')
   const [changeComment, setChangeComment] = useState('')
 
   const set = useCallback(
@@ -613,7 +629,9 @@ function ChartBuilder({
 
   const requiredFilled = zones.every((z) => !z.required || zoneValues(z).length > 0)
   const canSave = Boolean(
-    state.name.trim() && state.datasetId && state.chartType && requiredFilled,
+    state.name.trim() &&
+      state.datasetId &&
+      (mode === 'code' ? code.trim() : state.chartType && requiredFilled),
   )
 
   // Al cambiar de tipo, conserva solo las zonas que el nuevo tipo usa (evita
@@ -644,15 +662,16 @@ function ChartBuilder({
     set(key, [...state[key], column])
   }
 
-  // Spec efectiva: la del editor JSON cuando el modo avanzado está activo y
-  // el JSON parsea; si no, la derivada del builder visual.
+  // Spec efectiva: en modo código lleva el JS del sandbox (gana sobre encodings);
+  // si no, la derivada del builder visual.
   const currentSpec = specFromState(state, schemaColumns)
-  const effectiveSpec = mode === 'json' && advancedSpec ? advancedSpec : currentSpec
+  const effectiveSpec: ChartSpec = mode === 'code' ? { ...currentSpec, code } : currentSpec
 
   // Preview por spec: el backend genera la consulta segura (agregación,
   // filtros y orden server-side) y devuelve solo las filas necesarias.
   async function runPreview() {
     if (mode === 'visual' && (!state.datasetId || !requiredFilled)) return
+    if (mode === 'code' && (!state.datasetId || !code.trim())) return
     setPreviewLoading(true)
     setPreviewError(null)
     try {
@@ -665,14 +684,13 @@ function ChartBuilder({
     }
   }
 
-  // Cambio de modo: al volver al visual se sincroniza lo representable de la
-  // spec avanzada con los controles del builder.
-  function switchMode(next: 'visual' | 'json' | 'history') {
+  // Cambio de modo. Visual y código son formas de autoría distintas: el código
+  // no es representable como encodings, así que no se sincroniza al builder
+  // visual (guardar en visual descarta el código, y viceversa). Al entrar a
+  // código sin nada escrito, se siembra una plantilla.
+  function switchMode(next: 'visual' | 'code' | 'history') {
     if (next === mode) return
-    if (next === 'visual' && mode === 'json' && advancedSpec) {
-      setState(stateFromSpec(advancedSpec, state.name, state.description))
-    }
-    if (next !== 'json') setAdvancedSpec(null)
+    if (next === 'code' && !code.trim()) setCode(CODIGO_INICIAL)
     setMode(next)
   }
 
@@ -699,8 +717,8 @@ function ChartBuilder({
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      if (mode === 'json' && !advancedSpec) {
-        throw new Error('El JSON de la spec es inválido; corrígelo antes de guardar.')
+      if (mode === 'code' && !code.trim()) {
+        throw new Error('Escribe el código de la gráfica antes de guardar.')
       }
       const chartSpec = effectiveSpec
       if (editingChart) {
@@ -744,11 +762,12 @@ function ChartBuilder({
 
   const referencedCols = zones.flatMap((z) => zoneValues(z))
   const showChart =
-    previewData &&
-    previewData.rows.length > 0 &&
-    (mode === 'json' ||
-      (requiredFilled &&
-        referencedCols.every((c) => previewData.columns.some((col) => col.name === c))))
+    mode === 'code'
+      ? !!previewData
+      : previewData &&
+        previewData.rows.length > 0 &&
+        requiredFilled &&
+        referencedCols.every((c) => previewData.columns.some((col) => col.name === c))
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
@@ -814,12 +833,12 @@ function ChartBuilder({
         </button>
         <button
           type="button"
-          onClick={() => switchMode('json')}
+          onClick={() => switchMode('code')}
           className={`rounded-lg px-3 py-1 text-xs font-medium ${
-            mode === 'json' ? 'bg-iieg-100 text-iieg-700' : 'text-gray-500 hover:bg-gray-50'
+            mode === 'code' ? 'bg-iieg-100 text-iieg-700' : 'text-gray-500 hover:bg-gray-50'
           }`}
         >
-          Avanzado (JSON)
+          Avanzado (código)
         </button>
         {editingChart && (
           <button
@@ -832,23 +851,18 @@ function ChartBuilder({
             Historial
           </button>
         )}
-        {mode === 'json' && (
+        {mode === 'code' && (
           <span className="ml-2 text-[11px] text-gray-400">
-            Edita la ChartSpec directamente; sin SQL ni JavaScript libres.
+            JavaScript con ECharts sobre las filas del dataset; se ejecuta en tu navegador.
           </span>
         )}
       </div>
 
       {/* Main: 3 columnas (visual) o editor + preview (avanzado) */}
       <div className="flex flex-1 overflow-hidden">
-        {mode === 'json' && (
+        {mode === 'code' && (
           <div className="w-1/2 flex-shrink-0 border-r border-gray-100 bg-white">
-            <SpecEditor
-              initial={currentSpec}
-              onSpecChange={setAdvancedSpec}
-              generatedSql={previewData?.generated_sql ?? null}
-              previewRows={previewData?.rows ?? null}
-            />
+            <SandboxEditor value={code} onChange={setCode} columns={schemaColumns} />
           </div>
         )}
 
