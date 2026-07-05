@@ -18,7 +18,7 @@ interface Props {
   chartItems: { id: string; label: string }[]
 }
 
-const fieldCls = 'w-full rounded border border-gray-200 px-2 py-1 text-xs focus:border-iieg-400 focus:outline-none'
+const fieldCls = 'w-full rounded border border-gray-200 px-2 py-1 text-xs focus:border-iieg-400 focus:outline-none focus:ring-1 focus:ring-iieg-400'
 
 // "value|label" por línea → opciones estáticas (y de vuelta).
 function optionsToText(options: FilterOption[]): string {
