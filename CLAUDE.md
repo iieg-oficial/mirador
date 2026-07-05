@@ -24,14 +24,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   Actions (`.github/workflows/ci.yml`). Ver `docs/deployment.md`.
 - Resiliencia: BD externa o Redis caídos responden 503 con mensaje claro (no 500/502
   genérico); `/health` reporta el estado de la BD de metadata y de Redis por separado.
+- Tableros/dashboards internos (backend `app/modules/dashboards/` + frontend
+  `features/dashboards/`): grid drag-and-drop de gráficas/Markdown, filtros
+  globales/locales, exportación PDF/ZIP. Se había retirado en 0.1.1 por bugs y alcance
+  sin pulir; está de vuelta en desarrollo activo.
 
 **Pendiente:** publicación de dashboards (snapshot inmutable), API pública, municipios,
 auditoría (`query_execution_logs` — el usuario decidió dejarla fuera del ciclo de
 producción de 2026-07). **Mapas geográficos: descartados** (los cubre otro proyecto).
-**Tableros/dashboards internos: retirados en 0.1.1** (bugs y alcance sin pulir); el
-módulo `dashboards` (backend y frontend) se eliminó. La cadena de datos conserva
-`Dashboard` como eslabón de diseño futuro para cuando se retome la publicación pública,
-pero hoy no existe ninguna implementación de tableros.
 
 La especificación de lo que se va a construir es autoritativa y vive en:
 - **`docs/`** — arquitectura, despliegue, documentación por módulo, checklist v1.0.
@@ -91,9 +91,11 @@ Cada eslabón se separa para poder reutilizar: un dataset alimenta varias gráfi
 gráfica entra en varios dashboards. **Los dashboards se guardan como configuración
 (JSON), no como HTML.** Los dos últimos eslabones (versión inmutable + publicación) son
 el **objetivo a futuro** cuando se retome la publicación pública; el módulo de tableros
-internos se **retiró en 0.1.1** (no existe implementación de `Dashboard` hoy). El flujo de estados
+internos (`Dashboard` sin versión/publicación) se había retirado en 0.1.1 y está de
+vuelta en desarrollo activo (ver "Estado del proyecto" arriba). El flujo de estados
 `borrador → in_review → aprobado → publicado → archivado` documentado en
-`docs/checklist.md` es el diseño planeado, no lo implementado.
+`docs/checklist.md` sigue siendo el diseño planeado para cuando exista publicación, no
+lo implementado hoy.
 
 ### Autenticación: BFF contra Minerva (OBLIGATORIO, no hay identidad local)
 - **Minerva es inamovible.** Es la única fuente de login, usuarios, roles y permisos —
