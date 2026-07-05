@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { createTag, deleteTag, listTags, updateTag } from './api'
+import { ErrorBanner } from '@/components/shared/ErrorBanner'
 import { TAG_COLORS, TAG_COLOR_CLASSES } from '@/types/tags'
 import type { Tag, TagColor } from '@/types/tags'
 
@@ -48,7 +49,7 @@ function TagRow({ tag }: { tag: Tag }) {
             value={name}
             onChange={(e) => setName(e.target.value)}
             maxLength={60}
-            className="rounded-md border border-gray-300 px-2 py-1 text-sm focus:border-iieg-500 focus:outline-none"
+            className="rounded-md border border-gray-300 px-2 py-1 text-sm focus:border-iieg-500 focus:outline-none focus:ring-1 focus:ring-iieg-500"
           />
         ) : (
           <span className="text-sm font-medium text-gray-800">{tag.name}</span>
@@ -154,7 +155,7 @@ export function TagsPage() {
               onChange={(e) => setNewName(e.target.value)}
               placeholder="Nombre de la nueva etiqueta"
               maxLength={60}
-              className="min-w-0 flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-iieg-500 focus:outline-none"
+              className="min-w-0 flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-iieg-500 focus:outline-none focus:ring-1 focus:ring-iieg-500"
             />
             <ColorSelect value={newColor} onChange={setNewColor} />
             <button
@@ -166,7 +167,7 @@ export function TagsPage() {
             </button>
           </div>
           {createMutation.isError && (
-            <p className="mb-3 text-xs text-red-600">{(createMutation.error as Error).message}</p>
+            <ErrorBanner error={createMutation.error} compact small className="mb-3" />
           )}
 
           {isLoading && <p className="text-sm text-gray-400">Cargando…</p>}

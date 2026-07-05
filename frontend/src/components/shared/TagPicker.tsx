@@ -4,6 +4,7 @@ import { createTag, listTags } from '@/features/tags/api'
 import { TAG_COLORS, TAG_COLOR_CLASSES } from '@/types/tags'
 import type { TagColor } from '@/types/tags'
 import { TagBadge } from './TagBadge'
+import { ErrorBanner } from './ErrorBanner'
 
 interface Props {
   value: string[]
@@ -60,7 +61,7 @@ export function TagPicker({ value, onChange }: Props) {
           onChange={(e) => setNewName(e.target.value)}
           placeholder="Nueva etiqueta…"
           maxLength={60}
-          className="min-w-0 flex-1 rounded-md border border-gray-300 px-2 py-1 text-xs focus:border-iieg-500 focus:outline-none"
+          className="min-w-0 flex-1 rounded-md border border-gray-300 px-2 py-1 text-xs focus:border-iieg-500 focus:outline-none focus:ring-1 focus:ring-iieg-500"
         />
         <select
           value={newColor}
@@ -82,9 +83,7 @@ export function TagPicker({ value, onChange }: Props) {
           + Crear
         </button>
       </div>
-      {createMutation.isError && (
-        <p className="text-xs text-red-600">{(createMutation.error as Error).message}</p>
-      )}
+      {createMutation.isError && <ErrorBanner error={createMutation.error} compact small />}
     </div>
   )
 }

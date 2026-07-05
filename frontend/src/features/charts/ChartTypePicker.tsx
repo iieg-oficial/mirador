@@ -190,7 +190,7 @@ function StaticPreview({ type }: { type: ChartType }) {
     return (
       <div className="flex h-28 w-full flex-col items-center justify-center">
         <span className="text-2xl font-bold text-iieg-700">8.4M</span>
-        <span className="mt-1 text-[10px] uppercase tracking-wider text-gray-400">
+        <span className="mt-1 text-[10px] font-semibold text-gray-400">
           Población total
         </span>
       </div>

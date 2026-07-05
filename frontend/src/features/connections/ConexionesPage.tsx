@@ -4,6 +4,7 @@ import { listConexiones, testConexion, deleteConexion } from './api'
 import { ConexionForm } from './ConexionForm'
 import { SchemaExplorer } from './SchemaExplorer'
 import { TagBadge } from '@/components/shared/TagBadge'
+import { ErrorBanner } from '@/components/shared/ErrorBanner'
 import { TagFilterBar } from '@/features/tags/TagFilterBar'
 import type { Connection, ConnectionStatus } from '@/types/connections'
 
@@ -245,7 +246,7 @@ export function ConexionesPage() {
                 Conexiones ({visibles.length})
               </p>
               <div className="flex gap-2">
-                <div className="flex flex-1 items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-1.5">
+                <div className="flex flex-1 items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-1.5 focus-within:border-iieg-400 focus-within:ring-1 focus-within:ring-iieg-400">
                   <svg className="h-3.5 w-3.5 flex-shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                       d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -258,7 +259,7 @@ export function ConexionesPage() {
                     className="flex-1 bg-transparent text-xs text-gray-700 placeholder-gray-400 focus:outline-none"
                   />
                 </div>
-                <select className="rounded-lg border border-gray-200 bg-gray-50 px-2 py-1.5 text-xs text-gray-600 focus:outline-none">
+                <select className="rounded-lg border border-gray-200 bg-gray-50 px-2 py-1.5 text-xs text-gray-600 focus:border-iieg-400 focus:outline-none focus:ring-1 focus:ring-iieg-400">
                   <option>Todas</option>
                   <option>Activas</option>
                   <option>Con error</option>
@@ -278,11 +279,7 @@ export function ConexionesPage() {
               </div>
             )}
 
-            {error && (
-              <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">
-                {(error as Error).message}
-              </div>
-            )}
+            {error && <ErrorBanner error={error} />}
 
             {!isLoading && visibles.length === 0 && (
               <div className="py-12 text-center">

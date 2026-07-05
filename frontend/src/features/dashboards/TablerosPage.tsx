@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { createDashboard, deleteDashboard, listDashboards } from './api'
+import { ErrorBanner } from '@/components/shared/ErrorBanner'
 import { DASHBOARD_STATUS_LABELS } from '@/types/dashboards'
 import type { DashboardRead, DashboardStatus } from '@/types/dashboards'
 
@@ -39,7 +40,7 @@ function CreateDashboardModal({
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Nombre del tablero"
-              className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-iieg-400 focus:outline-none"
+              className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-iieg-400 focus:outline-none focus:ring-1 focus:ring-iieg-400"
             />
           </div>
           <div className="flex flex-col gap-1">
@@ -49,14 +50,12 @@ function CreateDashboardModal({
               onChange={(e) => setDescription(e.target.value)}
               rows={3}
               placeholder="Descripción opcional"
-              className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-iieg-400 focus:outline-none"
+              className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-iieg-400 focus:outline-none focus:ring-1 focus:ring-iieg-400"
             />
           </div>
         </div>
 
-        {mutation.isError && (
-          <p className="mt-2 text-xs text-red-600">{(mutation.error as Error).message}</p>
-        )}
+        {mutation.isError && <ErrorBanner error={mutation.error} compact small className="mt-2" />}
 
         <div className="mt-4 flex justify-end gap-2">
           <button
