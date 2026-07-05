@@ -3,6 +3,7 @@ import { useForm } from 'react-hook-form'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { createConexion, updateConexion } from './api'
 import { TagPicker } from '@/components/shared/TagPicker'
+import { ErrorBanner } from '@/components/shared/ErrorBanner'
 import type { Connection, ConnectionEngine } from '@/types/connections'
 
 interface FormValues {
@@ -239,11 +240,7 @@ export function ConexionForm({ editing, onClose }: Props) {
             </Field>
           </div>
 
-          {mutation.error && (
-            <div className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">
-              {(mutation.error as Error).message}
-            </div>
-          )}
+          {mutation.error && <ErrorBanner error={mutation.error} className="mt-4" />}
 
           <div className="mt-6 flex justify-end gap-3">
             <button

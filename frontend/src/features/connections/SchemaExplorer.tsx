@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { getColumns, getSchema } from './api'
+import { ErrorBanner } from '@/components/shared/ErrorBanner'
 import type { ColumnInfo, Connection, SchemaObject } from '@/types/connections'
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -77,7 +78,9 @@ function ObjectDetail({
         <p className="px-5 py-6 text-sm text-gray-400">Cargando columnas…</p>
       )}
       {error && (
-        <p className="px-5 py-4 text-sm text-red-600">{(error as Error).message}</p>
+        <div className="px-5 py-4">
+          <ErrorBanner error={error} compact />
+        </div>
       )}
       {columns && columns.length === 0 && (
         <p className="px-5 py-6 text-sm italic text-gray-400">Sin columnas.</p>
@@ -271,7 +274,7 @@ export function SchemaExplorer({ connection }: { connection: Connection }) {
       <div className="flex flex-1 overflow-hidden">
         {/* Árbol de esquema */}
         <div className="flex w-64 flex-shrink-0 flex-col border-r border-gray-100">
-          <div className="flex items-center gap-1.5 border-b border-gray-100 px-3 py-2">
+          <div className="flex items-center gap-1.5 border-b border-gray-100 px-3 py-2 focus-within:border-iieg-400">
             <svg className="h-3.5 w-3.5 flex-shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                 d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -281,7 +284,7 @@ export function SchemaExplorer({ connection }: { connection: Connection }) {
               placeholder="Buscar tabla o vista…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="flex-1 bg-transparent text-xs text-gray-700 placeholder-gray-400 focus:outline-none"
+              className="flex-1 bg-transparent text-xs text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-iieg-400 focus:ring-inset"
             />
           </div>
 
@@ -297,10 +300,7 @@ export function SchemaExplorer({ connection }: { connection: Connection }) {
             )}
 
             {!unsupported && error && (
-              <div className="rounded-lg bg-red-50 p-3 text-xs text-red-700">
-                <p className="font-semibold">No se pudo inspeccionar el esquema</p>
-                <p className="mt-1 text-red-500">{(error as Error).message}</p>
-              </div>
+              <ErrorBanner error={error} title="No se pudo inspeccionar el esquema" small />
             )}
 
             {!unsupported && filteredSchemas?.map((group) => (
