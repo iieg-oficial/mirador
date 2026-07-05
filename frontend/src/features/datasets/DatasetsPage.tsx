@@ -5,6 +5,7 @@ import { downloadCsv } from '@/lib/csv'
 import { listDatasets, deleteDataset, runPlayground } from './api'
 import { DatasetForm } from './DatasetForm'
 import { TagBadge } from '@/components/shared/TagBadge'
+import { ErrorBanner } from '@/components/shared/ErrorBanner'
 import { TagFilterBar } from '@/features/tags/TagFilterBar'
 import type { Dataset, DatasetStatus, PreviewResult } from '@/types/datasets'
 
@@ -147,7 +148,7 @@ function DatasetList({
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="Buscar dataset…"
-          className="w-64 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm focus:border-iieg-400 focus:outline-none"
+          className="w-64 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm focus:border-iieg-400 focus:outline-none focus:ring-1 focus:ring-iieg-400"
         />
         <TagFilterBar value={tagIds} onChange={setTagIds} />
       </div>
@@ -290,7 +291,7 @@ function Playground({
             <select
               value={connectionId}
               onChange={(e) => { setConnectionId(e.target.value); setResult(null) }}
-              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:border-iieg-400 focus:outline-none"
+              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:border-iieg-400 focus:outline-none focus:ring-1 focus:ring-iieg-400"
             >
               <option value="">— Seleccionar —</option>
               {conexiones
@@ -311,7 +312,7 @@ function Playground({
             <select
               value={maxRows}
               onChange={(e) => setMaxRows(Number(e.target.value))}
-              className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:border-iieg-400 focus:outline-none"
+              className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:border-iieg-400 focus:outline-none focus:ring-1 focus:ring-iieg-400"
             >
               {[50, 100, 500, 1000, 5000].map((n) => (
                 <option key={n} value={n}>{n.toLocaleString('es-MX')} filas</option>
@@ -389,7 +390,7 @@ function Playground({
                 }
                 disabled={!connectionId}
                 spellCheck={false}
-                className="flex-1 resize-none rounded-lg border border-gray-200 bg-gray-50/60 p-3 font-mono text-sm leading-relaxed text-gray-900 placeholder-gray-400 focus:border-iieg-400 focus:bg-white focus:outline-none disabled:bg-gray-50 disabled:text-gray-400"
+                className="flex-1 resize-none rounded-lg border border-gray-200 bg-gray-50/60 p-3 font-mono text-sm leading-relaxed text-gray-900 placeholder-gray-400 focus:border-iieg-400 focus:bg-white focus:outline-none focus:ring-1 focus:ring-iieg-400 disabled:bg-gray-50 disabled:text-gray-400"
                 style={{ minHeight: '280px' }}
               />
               <p className="mt-2 text-xs text-gray-400">
@@ -431,12 +432,11 @@ function Playground({
             )}
 
             {runMutation.isError && (
-              <div className="rounded-xl border border-red-100 bg-red-50 p-4">
-                <p className="text-sm font-semibold text-red-700">Error al ejecutar la consulta</p>
-                <p className="mt-1 text-xs text-red-600">
-                  {runMutation.error instanceof Error ? runMutation.error.message : 'Error desconocido'}
-                </p>
-              </div>
+              <ErrorBanner
+                error={runMutation.error}
+                fallback="Error desconocido"
+                title="Error al ejecutar la consulta"
+              />
             )}
 
             {result && <ResultTable result={result} />}
