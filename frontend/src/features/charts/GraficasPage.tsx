@@ -16,7 +16,11 @@ import {
 import type { ChartPreviewResult } from './api'
 import { ChartRenderer } from './ChartRenderer'
 import { ChartTypePicker } from './ChartTypePicker'
-import { SpecEditor } from './SpecEditor'
+import { SandboxEditor } from './SandboxEditor'
+import { TagBadge } from '@/components/shared/TagBadge'
+import { TagPicker } from '@/components/shared/TagPicker'
+import { ErrorBanner } from '@/components/shared/ErrorBanner'
+import { TagFilterBar } from '@/features/tags/TagFilterBar'
 import { draftToFilter, filterToDraft } from './filters'
 import type { FilterDraft } from './filters'
 import type {
@@ -25,6 +29,7 @@ import type {
   ChartSpec,
   ChartStatus,
   ChartType,
+  CodeEngine,
   FilterOperator,
   LegendPosition,
 } from '@/types/charts'
@@ -110,6 +115,34 @@ const ZONES_BY_TYPE: Record<ChartType, ZoneDef[]> = {
   ],
 }
 
+// Plantillas iniciales del sandbox: una barra simple sobre las dos primeras
+// columnas del dataset, para que el usuario vea algo al entrar y sepa cómo se
+// usa `rows` en cada motor.
+const CODIGO_INICIAL: Record<CodeEngine, string> = {
+  echarts: `// rows: filas del dataset · echarts: el módulo. Devuelve un option de ECharts.
+const cols = Object.keys(rows[0] ?? {})
+const [dim, val] = [cols[0], cols[1]]
+return {
+  tooltip: {},
+  xAxis: { type: 'category', data: rows.map((r) => r[dim]) },
+  yAxis: { type: 'value' },
+  series: [{ type: 'bar', data: rows.map((r) => Number(r[val])) }],
+}
+`,
+  plotly: `# rows: filas del dataset (lista de dicts). Deja la figura de Plotly en \`fig\`.
+import pandas as pd
+import plotly.express as px
+
+df = pd.DataFrame(rows)
+fig = px.bar(df, x=df.columns[0], y=df.columns[1])
+`,
+}
+
+/** ¿El código es una plantilla sin tocar (o vacío)? Si sí, se puede reemplazar. */
+function isCodePristine(code: string): boolean {
+  return !code.trim() || Object.values(CODIGO_INICIAL).includes(code)
+}
+
 // ── Helpers UI ────────────────────────────────────────────────────────────────
 
 function Select({
@@ -136,7 +169,7 @@ function Select({
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:border-iieg-400 focus:outline-none"
+        className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:border-iieg-400 focus:outline-none focus:ring-1 focus:ring-iieg-400"
       >
         <option value="">{placeholder}</option>
         {options.map((o) => (
@@ -375,13 +408,25 @@ function ChartCard({
             ))}
           </select>
           <span className="rounded-full bg-iieg-100 px-2 py-0.5 text-[11px] font-medium text-iieg-700">
-            {CHART_TYPE_LABELS[chart.chart_type] ?? chart.chart_type}
+            {chart.chart_spec.code
+              ? chart.chart_spec.code_engine === 'plotly'
+                ? 'Código · Plotly'
+                : 'Código · ECharts'
+              : CHART_TYPE_LABELS[chart.chart_type] ?? chart.chart_type}
           </span>
         </span>
       </div>
 
       {chart.description && (
         <p className="mb-2 text-xs text-gray-500 line-clamp-2">{chart.description}</p>
+      )}
+
+      {chart.tags.length > 0 && (
+        <div className="mb-2 flex flex-wrap gap-1">
+          {chart.tags.map((t) => (
+            <TagBadge key={t.id} tag={t} />
+          ))}
+        </div>
       )}
 
       <p className="text-xs text-gray-400">
@@ -465,6 +510,7 @@ interface BuilderState {
   showLegend: boolean
   legendPosition: LegendPosition
   showDownload: boolean
+  tagIds: string[]
 }
 
 const BUILDER_DEFAULTS: BuilderState = {
@@ -486,12 +532,18 @@ const BUILDER_DEFAULTS: BuilderState = {
   showLegend: true,
   legendPosition: 'top',
   showDownload: false,
+  tagIds: [],
 }
 
 // Vuelca una spec al estado del builder visual (best-effort: encodings de
 // tooltip/size u ordenamientos múltiples del modo avanzado no tienen control
 // visual y se conservan solo mientras se edita en JSON).
-function stateFromSpec(spec: ChartSpec, name: string, description: string): BuilderState {
+function stateFromSpec(
+  spec: ChartSpec,
+  name: string,
+  description: string,
+  tagIds: string[] = [],
+): BuilderState {
   const aggregations: Record<string, Aggregation | ''> = {}
   for (const e of spec.encodings.y) {
     if (e.aggregation) aggregations[e.field] = e.aggregation
@@ -515,11 +567,17 @@ function stateFromSpec(spec: ChartSpec, name: string, description: string): Buil
     showLegend: spec.interactions.legend,
     legendPosition: spec.style.legend_position,
     showDownload: spec.interactions.download,
+    tagIds,
   }
 }
 
 function builderFromChart(chart: Chart): BuilderState {
-  return stateFromSpec(chart.chart_spec, chart.name, chart.description ?? '')
+  return stateFromSpec(
+    chart.chart_spec,
+    chart.name,
+    chart.description ?? '',
+    chart.tags.map((t) => t.id),
+  )
 }
 
 // Construye la ChartSpec canónica desde el estado del builder visual.
@@ -570,9 +628,19 @@ function ChartBuilder({
   const [previewLoading, setPreviewLoading] = useState(false)
   const [previewError, setPreviewError] = useState<string | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
-  // Modo avanzado (RF-04) e historial de versiones (RF-12).
-  const [mode, setMode] = useState<'visual' | 'json' | 'history'>('visual')
-  const [advancedSpec, setAdvancedSpec] = useState<ChartSpec | null>(null)
+  // Modo avanzado = sandbox de código (JS·ECharts o Python·Plotly) e historial
+  // (RF-12). Al editar una gráfica que ya es de código, se abre directo ahí.
+  const [mode, setMode] = useState<'visual' | 'code' | 'history'>(
+    editingChart?.chart_spec.code ? 'code' : 'visual',
+  )
+  const [code, setCode] = useState<string>(editingChart?.chart_spec.code ?? '')
+  const [engine, setEngine] = useState<CodeEngine>(
+    editingChart?.chart_spec.code_engine ?? 'echarts',
+  )
+  // Spec con la que se corrió la última vista previa: el renderer usa este
+  // snapshot (no el código vivo del editor) para no re-ejecutar el código del
+  // usuario en cada tecleo — con Python (Pyodide) sería carísimo.
+  const [ranSpec, setRanSpec] = useState<ChartSpec | null>(null)
   const [changeComment, setChangeComment] = useState('')
 
   const set = useCallback(
@@ -613,7 +681,9 @@ function ChartBuilder({
 
   const requiredFilled = zones.every((z) => !z.required || zoneValues(z).length > 0)
   const canSave = Boolean(
-    state.name.trim() && state.datasetId && state.chartType && requiredFilled,
+    state.name.trim() &&
+      state.datasetId &&
+      (mode === 'code' ? code.trim() : state.chartType && requiredFilled),
   )
 
   // Al cambiar de tipo, conserva solo las zonas que el nuevo tipo usa (evita
@@ -644,20 +714,23 @@ function ChartBuilder({
     set(key, [...state[key], column])
   }
 
-  // Spec efectiva: la del editor JSON cuando el modo avanzado está activo y
-  // el JSON parsea; si no, la derivada del builder visual.
+  // Spec efectiva: en modo código lleva el código del sandbox y su motor (ganan
+  // sobre encodings); si no, la derivada del builder visual.
   const currentSpec = specFromState(state, schemaColumns)
-  const effectiveSpec = mode === 'json' && advancedSpec ? advancedSpec : currentSpec
+  const effectiveSpec: ChartSpec =
+    mode === 'code' ? { ...currentSpec, code, code_engine: engine } : currentSpec
 
   // Preview por spec: el backend genera la consulta segura (agregación,
   // filtros y orden server-side) y devuelve solo las filas necesarias.
   async function runPreview() {
     if (mode === 'visual' && (!state.datasetId || !requiredFilled)) return
+    if (mode === 'code' && (!state.datasetId || !code.trim())) return
     setPreviewLoading(true)
     setPreviewError(null)
     try {
       const result = await previewSpec(effectiveSpec)
       setPreviewData(result)
+      setRanSpec(effectiveSpec)
     } catch (err) {
       setPreviewError((err as Error).message)
     } finally {
@@ -665,15 +738,23 @@ function ChartBuilder({
     }
   }
 
-  // Cambio de modo: al volver al visual se sincroniza lo representable de la
-  // spec avanzada con los controles del builder.
-  function switchMode(next: 'visual' | 'json' | 'history') {
+  // Cambio de modo. Visual y código son formas de autoría distintas: el código
+  // no es representable como encodings, así que no se sincroniza al builder
+  // visual (guardar en visual descarta el código, y viceversa). Al entrar a
+  // código sin nada escrito, se siembra una plantilla.
+  function switchMode(next: 'visual' | 'code' | 'history') {
     if (next === mode) return
-    if (next === 'visual' && mode === 'json' && advancedSpec) {
-      setState(stateFromSpec(advancedSpec, state.name, state.description))
-    }
-    if (next !== 'json') setAdvancedSpec(null)
+    if (next === 'code' && !code.trim()) setCode(CODIGO_INICIAL[engine])
     setMode(next)
+  }
+
+  // Cambio de motor (ECharts·JS ↔ Plotly·Python): si el código sigue siendo la
+  // plantilla sin tocar, se cambia a la del nuevo motor; si el usuario ya
+  // escribió algo, se respeta tal cual (que él decida cómo migrarlo).
+  function changeEngine(next: CodeEngine) {
+    if (next === engine) return
+    if (isCodePristine(code)) setCode(CODIGO_INICIAL[next])
+    setEngine(next)
   }
 
   // Al editar una gráfica guardada ya hay un dataset seleccionado: disparar el
@@ -684,10 +765,23 @@ function ChartBuilder({
     if (editingChart && state.datasetId) runPreview()
   }, [])
 
+  // Un KPI colapsa la métrica a un solo número, así que el backend exige una
+  // agregación. Al elegir la métrica de un KPI sin agregación, aplica una por
+  // defecto (evita el error "'kpi' requiere una agregación en la métrica").
+  useEffect(() => {
+    if (state.chartType !== 'kpi') return
+    const field = state.fieldY[0]
+    if (!field || state.aggregations[field]) return
+    const allowed = (schemaColumns.find((c) => c.name === field)?.aggregations ??
+      (Object.keys(AGGREGATION_LABELS) as Aggregation[])) as Aggregation[]
+    const def = allowed.includes('sum') ? 'sum' : allowed[0]
+    if (def) setState((prev) => ({ ...prev, aggregations: { ...prev.aggregations, [field]: def } }))
+  }, [state.chartType, state.fieldY, state.aggregations, schemaColumns])
+
   const saveMutation = useMutation({
     mutationFn: async () => {
-      if (mode === 'json' && !advancedSpec) {
-        throw new Error('El JSON de la spec es inválido; corrígelo antes de guardar.')
+      if (mode === 'code' && !code.trim()) {
+        throw new Error('Escribe el código de la gráfica antes de guardar.')
       }
       const chartSpec = effectiveSpec
       if (editingChart) {
@@ -696,12 +790,14 @@ function ChartBuilder({
           description: state.description || null,
           chart_spec: chartSpec,
           change_comment: changeComment || null,
+          tag_ids: state.tagIds,
         })
       }
       return createChart({
         name: state.name,
         description: state.description || null,
         chart_spec: chartSpec,
+        tag_ids: state.tagIds,
       })
     },
     onSuccess: () => {
@@ -731,11 +827,12 @@ function ChartBuilder({
 
   const referencedCols = zones.flatMap((z) => zoneValues(z))
   const showChart =
-    previewData &&
-    previewData.rows.length > 0 &&
-    (mode === 'json' ||
-      (requiredFilled &&
-        referencedCols.every((c) => previewData.columns.some((col) => col.name === c))))
+    mode === 'code'
+      ? !!previewData
+      : previewData &&
+        previewData.rows.length > 0 &&
+        requiredFilled &&
+        referencedCols.every((c) => previewData.columns.some((col) => col.name === c))
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
@@ -751,7 +848,7 @@ function ChartBuilder({
               value={state.name}
               onChange={(e) => set('name', e.target.value)}
               placeholder="Nombre de la gráfica"
-              className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-iieg-400 focus:outline-none"
+              className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-iieg-400 focus:outline-none focus:ring-1 focus:ring-iieg-400"
             />
           </div>
           <div className="col-span-1 flex flex-col gap-1">
@@ -761,7 +858,7 @@ function ChartBuilder({
               value={state.description}
               onChange={(e) => set('description', e.target.value)}
               placeholder="Descripción opcional"
-              className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-iieg-400 focus:outline-none"
+              className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-iieg-400 focus:outline-none focus:ring-1 focus:ring-iieg-400"
             />
           </div>
           <Select
@@ -786,6 +883,10 @@ function ChartBuilder({
             options={CHART_TYPES.map((t) => ({ value: t, label: CHART_TYPE_LABELS[t] }))}
           />
         </div>
+        <div className="mt-3 max-w-sm">
+          <label className="mb-1 block text-xs font-semibold text-gray-600">Etiquetas</label>
+          <TagPicker value={state.tagIds} onChange={(v) => set('tagIds', v)} />
+        </div>
       </div>
 
       {/* Toggle de modo: visual / avanzado (JSON) */}
@@ -801,12 +902,12 @@ function ChartBuilder({
         </button>
         <button
           type="button"
-          onClick={() => switchMode('json')}
+          onClick={() => switchMode('code')}
           className={`rounded-lg px-3 py-1 text-xs font-medium ${
-            mode === 'json' ? 'bg-iieg-100 text-iieg-700' : 'text-gray-500 hover:bg-gray-50'
+            mode === 'code' ? 'bg-iieg-100 text-iieg-700' : 'text-gray-500 hover:bg-gray-50'
           }`}
         >
-          Avanzado (JSON)
+          Avanzado (código)
         </button>
         {editingChart && (
           <button
@@ -819,22 +920,26 @@ function ChartBuilder({
             Historial
           </button>
         )}
-        {mode === 'json' && (
+        {mode === 'code' && (
           <span className="ml-2 text-[11px] text-gray-400">
-            Edita la ChartSpec directamente; sin SQL ni JavaScript libres.
+            {engine === 'plotly'
+              ? 'Python con Plotly sobre las filas del dataset; se ejecuta en tu navegador (Pyodide).'
+              : 'JavaScript con ECharts sobre las filas del dataset; se ejecuta en tu navegador.'}
           </span>
         )}
       </div>
 
       {/* Main: 3 columnas (visual) o editor + preview (avanzado) */}
       <div className="flex flex-1 overflow-hidden">
-        {mode === 'json' && (
+        {mode === 'code' && (
           <div className="w-1/2 flex-shrink-0 border-r border-gray-100 bg-white">
-            <SpecEditor
-              initial={currentSpec}
-              onSpecChange={setAdvancedSpec}
-              generatedSql={previewData?.generated_sql ?? null}
-              previewRows={previewData?.rows ?? null}
+            <SandboxEditor
+              value={code}
+              onChange={setCode}
+              onRun={runPreview}
+              columns={schemaColumns}
+              engine={engine}
+              onEngineChange={changeEngine}
             />
           </div>
         )}
@@ -843,7 +948,7 @@ function ChartBuilder({
         {mode === 'visual' && (
         <div className="w-64 flex-shrink-0 space-y-4 overflow-y-auto border-r border-gray-100 bg-white p-4">
           <div>
-            <p className="mb-2 text-xs font-bold uppercase tracking-wider text-gray-400">
+            <p className="mb-2 text-xs font-semibold text-gray-500">
               Esquema del dataset
             </p>
 
@@ -875,7 +980,7 @@ function ChartBuilder({
           </div>
 
           <div className="space-y-3 border-t border-gray-100 pt-4">
-            <p className="text-xs font-bold uppercase tracking-wider text-gray-400">
+            <p className="text-xs font-semibold text-gray-500">
               Mapeo de campos
             </p>
             <p className="text-[11px] text-gray-400">
@@ -946,11 +1051,7 @@ function ChartBuilder({
                     </details>
                   </div>
                 ))}
-                {restoreMutation.isError && (
-                  <p className="text-xs text-red-600">
-                    {(restoreMutation.error as Error).message}
-                  </p>
-                )}
+                {restoreMutation.isError && <ErrorBanner error={restoreMutation.error} compact small />}
               </div>
             )}
           </div>
@@ -986,13 +1087,16 @@ function ChartBuilder({
           </div>
 
           <div className="flex-1 p-4">
-            {previewError && (
-              <div className="rounded-lg bg-red-50 p-4 text-sm text-red-700">{previewError}</div>
-            )}
+            {previewError && <ErrorBanner error={previewError} />}
 
             {!previewError && showChart && (
               <div className="h-full min-h-[300px] rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-                <ChartRenderer spec={effectiveSpec} rows={previewData!.rows} />
+                {/* En modo código se renderiza el snapshot de la última corrida,
+                 * no el código vivo del editor (ver ranSpec). */}
+                <ChartRenderer
+                  spec={mode === 'code' && ranSpec ? ranSpec : effectiveSpec}
+                  rows={previewData!.rows}
+                />
               </div>
             )}
 
@@ -1055,7 +1159,7 @@ function ChartBuilder({
         {/* Derecha: config visual (solo en modo visual) */}
         {mode === 'visual' && (
         <div className="w-56 flex-shrink-0 space-y-4 overflow-y-auto border-l border-gray-100 bg-white p-4">
-          <p className="text-xs font-bold uppercase tracking-wider text-gray-400">
+          <p className="text-xs font-semibold text-gray-500">
             Configuración visual
           </p>
 
@@ -1066,7 +1170,7 @@ function ChartBuilder({
               value={state.title}
               onChange={(e) => set('title', e.target.value)}
               placeholder="Título de la gráfica"
-              className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-iieg-400 focus:outline-none"
+              className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-iieg-400 focus:outline-none focus:ring-1 focus:ring-iieg-400"
             />
           </div>
 
@@ -1077,7 +1181,7 @@ function ChartBuilder({
               value={state.subtitle}
               onChange={(e) => set('subtitle', e.target.value)}
               placeholder="Subtítulo opcional"
-              className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-iieg-400 focus:outline-none"
+              className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-iieg-400 focus:outline-none focus:ring-1 focus:ring-iieg-400"
             />
           </div>
 
@@ -1106,7 +1210,7 @@ function ChartBuilder({
           {/* Agregaciones por métrica (según la metadata semántica del dataset) */}
           {state.fieldY.length > 0 && (
             <div className="space-y-2 border-t border-gray-100 pt-4">
-              <p className="text-xs font-bold uppercase tracking-wider text-gray-400">
+              <p className="text-xs font-semibold text-gray-500">
                 Agregaciones
               </p>
               {state.fieldY.map((field) => {
@@ -1124,7 +1228,8 @@ function ChartBuilder({
                         aggregations: { ...prev.aggregations, [field]: v as Aggregation | '' },
                       }))
                     }
-                    placeholder="Sin agregar"
+                    required={state.chartType === 'kpi'}
+                    placeholder={state.chartType === 'kpi' ? 'Selecciona…' : 'Sin agregar'}
                     options={allowed.map((a) => ({ value: a, label: AGGREGATION_LABELS[a] }))}
                   />
                 )
@@ -1135,7 +1240,7 @@ function ChartBuilder({
           {/* Filtros */}
           <div className="space-y-2 border-t border-gray-100 pt-4">
             <div className="flex items-center justify-between">
-              <p className="text-xs font-bold uppercase tracking-wider text-gray-400">Filtros</p>
+              <p className="text-xs font-semibold text-gray-500">Filtros</p>
               <button
                 type="button"
                 onClick={() =>
@@ -1213,7 +1318,7 @@ function ChartBuilder({
 
           {/* Orden y límite */}
           <div className="space-y-3 border-t border-gray-100 pt-4">
-            <p className="text-xs font-bold uppercase tracking-wider text-gray-400">
+            <p className="text-xs font-semibold text-gray-500">
               Orden y límite
             </p>
             <div className="flex items-end gap-1.5">
@@ -1247,7 +1352,7 @@ function ChartBuilder({
                 max={50000}
                 value={state.limit}
                 onChange={(e) => set('limit', Math.max(1, Number(e.target.value) || 1))}
-                className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-iieg-400 focus:outline-none"
+                className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-iieg-400 focus:outline-none focus:ring-1 focus:ring-iieg-400"
               />
             </div>
           </div>
@@ -1264,9 +1369,7 @@ function ChartBuilder({
           Cancelar
         </button>
         <div className="flex items-center gap-3">
-          {saveError && (
-            <p className="text-xs text-red-600">{saveError}</p>
-          )}
+          {saveError && <ErrorBanner error={saveError} compact small />}
           {editingChart && (
             <input
               type="text"
@@ -1274,7 +1377,7 @@ function ChartBuilder({
               onChange={(e) => setChangeComment(e.target.value)}
               placeholder="Comentario del cambio (opcional)"
               maxLength={500}
-              className="w-64 rounded-lg border border-gray-200 px-3 py-2 text-xs focus:border-iieg-400 focus:outline-none"
+              className="w-64 rounded-lg border border-gray-200 px-3 py-2 text-xs focus:border-iieg-400 focus:outline-none focus:ring-1 focus:ring-iieg-400"
             />
           )}
           <button
@@ -1299,15 +1402,17 @@ export function GraficasPage() {
   const [tab, setTab] = useState<Tab>('list')
   const [editingChart, setEditingChart] = useState<Chart | null>(null)
   const [pickerType, setPickerType] = useState<ChartType | null>(null)
+  const [q, setQ] = useState('')
+  const [tagIds, setTagIds] = useState<string[]>([])
 
   const { data: charts = [], isLoading: loadingCharts } = useQuery({
-    queryKey: ['charts'],
-    queryFn: listCharts,
+    queryKey: ['charts', q, tagIds],
+    queryFn: () => listCharts({ q, tagIds }),
   })
 
   const { data: datasets = [] } = useQuery({
     queryKey: ['datasets'],
-    queryFn: listDatasets,
+    queryFn: () => listDatasets(),
   })
 
   const deleteMutation = useMutation({
@@ -1400,6 +1505,17 @@ export function GraficasPage() {
       <div className="flex-1 overflow-hidden">
         {tab === 'list' && (
           <div className="h-full overflow-y-auto p-6">
+            <div className="mb-4 flex flex-wrap items-center gap-3">
+              <input
+                type="text"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="Buscar gráfica…"
+                className="w-64 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm focus:border-iieg-400 focus:outline-none focus:ring-1 focus:ring-iieg-400"
+              />
+              <TagFilterBar value={tagIds} onChange={setTagIds} />
+            </div>
+
             {loadingCharts && (
               <p className="text-sm text-gray-400">Cargando gráficas…</p>
             )}

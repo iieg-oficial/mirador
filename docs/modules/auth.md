@@ -38,6 +38,9 @@ No existe identidad local: no hay tablas de usuarios, contraseñas ni roles prop
    └── Redirige al navegador a Minerva /auth/authorize con todos los parámetros
 
 2. GET /api/auth/callback?code=...&state=...
+   ├── Si Minerva manda error (p. ej. access_denied: sin rol en la app, no
+   │   emite code) → redirige a FRONTEND_POST_LOGIN_URL?error=... y el
+   │   AuthGuard del frontend muestra "sin acceso" (no reintenta login)
    ├── Verifica que state exista en Redis (anti-CSRF)
    ├── Recupera code_verifier y borra la clave oidc:{state}
    ├── Canjea el código con Minerva (POST /auth/token, server-to-server)

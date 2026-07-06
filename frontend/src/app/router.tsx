@@ -7,6 +7,9 @@ import { AdminHome } from '@/features/admin/AdminHome'
 import { ConexionesPage } from '@/features/connections/ConexionesPage'
 import { DatasetsPage } from '@/features/datasets/DatasetsPage'
 import { GraficasPage } from '@/features/charts/GraficasPage'
+import { TablerosPage } from '@/features/dashboards/TablerosPage'
+import { TableroEditor } from '@/features/dashboards/TableroEditor'
+import { TagsPage } from '@/features/tags/TagsPage'
 
 export const router = createBrowserRouter([
   {
@@ -30,6 +33,9 @@ export const router = createBrowserRouter([
           { path: 'conexiones', element: <ConexionesPage /> },
           { path: 'datasets', element: <DatasetsPage /> },
           { path: 'graficas', element: <GraficasPage /> },
+          { path: 'tableros', element: <TablerosPage /> },
+          { path: 'tableros/:id', element: <TableroEditor /> },
+          { path: 'tags', element: <TagsPage /> },
         ],
       },
     ],

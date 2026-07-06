@@ -13,6 +13,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from app.modules.connections.models import ConnectionEngine, ConnectionStatus
+from app.modules.tags.schemas import TagRead
 
 # Valores válidos de `sslmode` de libpq/psycopg.
 SSLMode = Literal["disable", "allow", "prefer", "require", "verify-ca", "verify-full"]
@@ -32,6 +33,7 @@ class ConnectionCreate(BaseModel):
     ssl_enabled: bool = False
     ssl_mode: SSLMode | None = None
     read_only: bool = True
+    tag_ids: list[uuid.UUID] = Field(default_factory=list)
 
 
 class ConnectionUpdate(BaseModel):
@@ -49,6 +51,7 @@ class ConnectionUpdate(BaseModel):
     ssl_mode: SSLMode | None = None
     read_only: bool | None = None
     status: ConnectionStatus | None = None
+    tag_ids: list[uuid.UUID] | None = None
 
 
 class ConnectionRead(BaseModel):
@@ -67,6 +70,7 @@ class ConnectionRead(BaseModel):
     read_only: bool
     status: ConnectionStatus
     last_test_error: str | None
+    tags: list[TagRead] = Field(default_factory=list)
     created_by: str | None
     created_by_email: str | None
     created_at: datetime

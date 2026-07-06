@@ -280,16 +280,23 @@ function formatCell(v: unknown): string {
   return String(v)
 }
 
-function TableRenderer({ spec, rows, className = '' }: ChartRendererProps) {
+// Columnas en el orden de los encodings (x → y → tooltip), sin duplicar.
+// Compartido por TableRenderer y la exportación CSV de gráficas (Fase 4, §7).
+export function columnsForSpec(spec: ChartSpec, rows: Record<string, unknown>[]): string[] {
+  const enc = spec.encodings
+  const ordered = [...enc.x, ...enc.y, ...enc.tooltip].map((e) => e.field)
+  const unique = [...new Set(ordered)]
+  return unique.length > 0 ? unique : Object.keys(rows[0] ?? {})
+}
+
+function TableRenderer({ spec, rows, className = '', onExportReady }: ChartRendererProps) {
   const [page, setPage] = useState(0)
 
-  // Columnas en el orden de los encodings (x → y → tooltip), sin duplicar.
-  const columns = useMemo(() => {
-    const enc = spec.encodings
-    const ordered = [...enc.x, ...enc.y, ...enc.tooltip].map((e) => e.field)
-    const unique = [...new Set(ordered)]
-    return unique.length > 0 ? unique : Object.keys(rows[0] ?? {})
-  }, [spec, rows])
+  const columns = useMemo(() => columnsForSpec(spec, rows), [spec, rows])
+
+  useEffect(() => {
+    onExportReady?.({ getPng: () => null, rows, columns })
+  }, [rows, columns, onExportReady])
 
   const pages = Math.max(1, Math.ceil(rows.length / TABLE_PAGE_SIZE))
   const current = Math.min(page, pages - 1)
@@ -365,7 +372,7 @@ function TableRenderer({ spec, rows, className = '' }: ChartRendererProps) {
 
 // ── Render de tarjeta KPI (no es ECharts) ─────────────────────────────────────
 
-function KpiRenderer({ spec, rows, className = '' }: ChartRendererProps) {
+function KpiRenderer({ spec, rows, className = '', onExportReady }: ChartRendererProps) {
   const metric = spec.encodings.y[0]
   const raw = metric ? rows[0]?.[metric.field] : undefined
   const value =
@@ -379,11 +386,15 @@ function KpiRenderer({ spec, rows, className = '' }: ChartRendererProps) {
     metric?.label ||
     (metric ? `${metric.aggregation ? AGGREGATION_LABELS[metric.aggregation] + ' de ' : ''}${metric.field}` : '')
 
+  useEffect(() => {
+    onExportReady?.({ getPng: () => null, rows, columns: metric ? [metric.field] : Object.keys(rows[0] ?? {}) })
+  }, [rows, metric, onExportReady])
+
   return (
     <div className={`flex h-full w-full flex-col items-center justify-center ${className}`}>
       <span className="text-4xl font-bold text-iieg-700">{value}</span>
       {caption && (
-        <span className="mt-2 text-xs font-medium uppercase tracking-wider text-gray-500">
+        <span className="mt-2 text-xs font-semibold text-gray-500">
           {caption}
         </span>
       )}
@@ -396,15 +407,139 @@ function KpiRenderer({ spec, rows, className = '' }: ChartRendererProps) {
 
 // ── Componente ─────────────────────────────────────────────────────────────────
 
+/** Exportación (Fase 4, §7): snapshot de lo necesario para armar CSV/PNG/PDF. */
+export interface ChartExportInfo {
+  /** PNG en data URL; `null` para table/kpi (no son ECharts). */
+  getPng: () => string | null
+  rows: Record<string, unknown>[]
+  columns: string[]
+}
+
 interface ChartRendererProps {
   spec: ChartSpec
   rows: Record<string, unknown>[]
   className?: string
+  /** Cross-filtering (§6): notifica el `name` (categoría/dimensión) del dato
+   * en el que se hizo clic. Solo lo dispara el renderer de ECharts. */
+  onDataClick?: (name: string) => void
+  /** Se dispara cada vez que hay datos listos para exportar (§7). */
+  onExportReady?: (info: ChartExportInfo) => void
 }
 
-function EchartsRenderer({ spec, rows, className = '' }: ChartRendererProps) {
+// Gráfica de código: ejecuta el JS del usuario (herramienta interna, sin la
+// restricción RNF-01) y devuelve el EChartsOption. En scope: `rows` (filas del
+// dataset) y `echarts` (el módulo). Debe `return` un objeto option.
+function runUserOption(code: string, rows: Record<string, unknown>[]): EChartsOption {
+  const fn = new Function('rows', 'echarts', code) as (
+    r: Record<string, unknown>[],
+    e: typeof echarts,
+  ) => unknown
+  const option = fn(rows, echarts)
+  if (!option || typeof option !== 'object') {
+    throw new Error('El código debe devolver (return) un objeto `option` de ECharts.')
+  }
+  return option as EChartsOption
+}
+
+// ── Render Plotly (gráficas de código Python) ──────────────────────────────────
+
+// Ejecuta el Python del usuario (Pyodide) y monta la figura con plotly.js.
+// Runtime y librería se cargan bajo demanda (dynamic import) para no engordar
+// el bundle de quien nunca usa Plotly.
+function PlotlyRenderer({ spec, rows, className = '', onExportReady }: ChartRendererProps) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const onExportReadyRef = useRef(onExportReady)
+  onExportReadyRef.current = onExportReady
+
+  const code = spec.code ?? ''
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el || !code) return
+    let cancelled = false
+    setLoading(true)
+    ;(async () => {
+      try {
+        const [{ runPythonFigure }, Plotly] = await Promise.all([
+          import('./pythonRuntime'),
+          import('plotly.js-dist-min'),
+        ])
+        const fig = await runPythonFigure(code, rows)
+        if (cancelled) return
+        await Plotly.newPlot(el, fig.data, { autosize: true, ...fig.layout }, { responsive: true })
+        setError(null)
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : String(err))
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+      if (!cancelled) {
+        onExportReadyRef.current?.({
+          // ponytail: sin PNG síncrono para Plotly (toImage es async), como table/kpi.
+          getPng: () => null,
+          rows,
+          columns: columnsForSpec(spec, rows),
+        })
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- solo re-ejecutar al cambiar código o datos
+  }, [code, rows])
+
+  // La figura sigue a su contenedor (grid del tablero, panel lateral), igual
+  // que el ResizeObserver de EchartsRenderer.
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const ro = new ResizeObserver(() => {
+      void import('plotly.js-dist-min').then((Plotly) => Plotly.Plots.resize(el))
+    })
+    ro.observe(el)
+    return () => {
+      ro.disconnect()
+      void import('plotly.js-dist-min').then((Plotly) => Plotly.purge(el))
+    }
+  }, [])
+
+  return (
+    <div className={`relative h-full w-full ${className}`}>
+      <div ref={containerRef} className="h-full w-full" />
+      {loading && (
+        <div className="absolute inset-0 flex items-center justify-center bg-white/80">
+          <span className="text-xs text-gray-500">Cargando Python (Pyodide)…</span>
+        </div>
+      )}
+      {error && !loading && (
+        <div className="absolute inset-0 flex items-center justify-center bg-white/90 p-4">
+          <pre className="max-h-full overflow-auto whitespace-pre-wrap rounded-lg bg-red-50 p-3 text-xs text-red-700">
+            {error}
+          </pre>
+        </div>
+      )}
+      {spec.interactions.download && (
+        <button
+          onClick={() => downloadCsv(spec.visual.title || 'grafica', columnsForSpec(spec, rows), rows)}
+          disabled={rows.length === 0}
+          className="no-drag absolute right-1 top-1 rounded border border-gray-200 bg-white/90 px-2 py-0.5 text-xs text-gray-500 hover:bg-gray-50 disabled:opacity-40"
+        >
+          CSV
+        </button>
+      )}
+    </div>
+  )
+}
+
+function EchartsRenderer({ spec, rows, className = '', onDataClick, onExportReady }: ChartRendererProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const instanceRef = useRef<ECharts | null>(null)
+  const [codeError, setCodeError] = useState<string | null>(null)
+  const onDataClickRef = useRef(onDataClick)
+  onDataClickRef.current = onDataClick
+  const onExportReadyRef = useRef(onExportReady)
+  onExportReadyRef.current = onExportReady
 
   // Inicializar / destruir instancia con el contenedor. El tema de ECharts
   // solo se aplica en init, así que un cambio de tema re-crea la instancia.
@@ -413,12 +548,22 @@ function EchartsRenderer({ spec, rows, className = '' }: ChartRendererProps) {
     if (!containerRef.current) return
     const chart = echarts.init(containerRef.current, theme, { renderer: 'canvas' })
     instanceRef.current = chart
+    chart.on('click', (params) => {
+      if (typeof params.name === 'string' && params.name) onDataClickRef.current?.(params.name)
+    })
 
     const onResize = () => chart.resize()
     window.addEventListener('resize', onResize)
+    // El tamaño del contenedor cambia sin que dispare `window.resize` (grid del
+    // tablero, tirador de resize, panel lateral). Sin observarlo, el canvas se
+    // queda con su tamaño inicial y la gráfica se ve cortada / no reacciona al
+    // ajustar el ítem. El ResizeObserver hace que ECharts siga a su contenedor.
+    const ro = new ResizeObserver(() => chart.resize())
+    ro.observe(containerRef.current)
 
     return () => {
       window.removeEventListener('resize', onResize)
+      ro.disconnect()
       chart.dispose()
       instanceRef.current = null
     }
@@ -426,14 +571,60 @@ function EchartsRenderer({ spec, rows, className = '' }: ChartRendererProps) {
 
   // Actualizar opciones cuando cambian los datos o la configuración
   useEffect(() => {
-    if (!instanceRef.current) return
-    instanceRef.current.setOption(applyOverrides(buildOption(spec, rows), spec), true)
+    const chart = instanceRef.current
+    if (!chart) return
+    try {
+      const option = spec.code
+        ? runUserOption(spec.code, rows)
+        : applyOverrides(buildOption(spec, rows), spec)
+      chart.clear()
+      chart.setOption(option, true)
+      setCodeError(null)
+    } catch (err) {
+      chart.clear()
+      setCodeError(err instanceof Error ? err.message : String(err))
+    }
+    onExportReadyRef.current?.({
+      getPng: () => instanceRef.current?.getDataURL({ type: 'png', pixelRatio: 2, backgroundColor: '#fff' }) ?? null,
+      rows,
+      columns: columnsForSpec(spec, rows),
+    })
   }, [spec, rows])
 
-  return <div ref={containerRef} className={`w-full h-full ${className}`} />
+  return (
+    <div className={`relative h-full w-full ${className}`}>
+      <div ref={containerRef} className="h-full w-full" />
+      {codeError && (
+        <div className="absolute inset-0 flex items-center justify-center bg-white/90 p-4">
+          <pre className="max-h-full overflow-auto whitespace-pre-wrap rounded-lg bg-red-50 p-3 text-xs text-red-700">
+            {codeError}
+          </pre>
+        </div>
+      )}
+      {/* CSV de la gráfica (§7): la tabla ya tiene su propio botón; el resto de
+       * tipos ECharts lo obtienen aquí, mismo gate que el PNG del toolbox. */}
+      {spec.interactions.download && (
+        <button
+          onClick={() => downloadCsv(spec.visual.title || 'grafica', columnsForSpec(spec, rows), rows)}
+          disabled={rows.length === 0}
+          className="no-drag absolute right-1 top-1 rounded border border-gray-200 bg-white/90 px-2 py-0.5 text-xs text-gray-500 hover:bg-gray-50 disabled:opacity-40"
+        >
+          CSV
+        </button>
+      )}
+    </div>
+  )
 }
 
 export function ChartRenderer(props: ChartRendererProps) {
+  // Gráfica de código: el motor decide quién la materializa (JS→ECharts, Python→Plotly).
+  if (props.spec.code) {
+    return props.spec.code_engine === 'plotly' ? (
+      <PlotlyRenderer {...props} />
+    ) : (
+      <EchartsRenderer {...props} />
+    )
+  }
   // table y kpi se renderizan como componentes React; el resto con ECharts.
   switch (props.spec.visual.chart_type) {
     case 'table':

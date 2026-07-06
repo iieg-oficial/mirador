@@ -22,8 +22,12 @@ export interface ChartPreviewResult extends PreviewResult {
   warnings: string[]
 }
 
-export async function listCharts(): Promise<Chart[]> {
-  return parseResponse(await fetch(BASE))
+export async function listCharts(filters?: { q?: string; tagIds?: string[] }): Promise<Chart[]> {
+  const params = new URLSearchParams()
+  if (filters?.q) params.set('q', filters.q)
+  for (const id of filters?.tagIds ?? []) params.append('tag_ids', id)
+  const qs = params.toString()
+  return parseResponse(await fetch(qs ? `${BASE}?${qs}` : BASE))
 }
 
 export async function getChart(id: string): Promise<Chart> {

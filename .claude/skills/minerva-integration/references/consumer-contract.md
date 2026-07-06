@@ -125,6 +125,12 @@ Implement this in the consumer only if users log in through that system.
 
 2. `GET /auth/callback` in the consumer:
    - Verify returned `state`.
+   - Handle the OAuth2 `error` param first. Minerva only issues a `code` when the user has
+     at least one role in the application. A user with no role is redirected to
+     `redirect_uri?error=access_denied&state=...` with **no `code`**. Make `code` optional
+     and, if `error` is present (e.g. `access_denied`, or `login_required` with
+     `prompt=none`), show a "no access" screen instead of exchanging the token. A callback
+     signature requiring `code` will otherwise 422 on denied logins.
    - Exchange `code` server-to-server:
 
 ```python
@@ -149,6 +155,54 @@ async with httpx.AsyncClient(timeout=10) as client:
 3. Store tokens using the project's existing session/security pattern. For a web app, prefer an HTTP-only secure session/cookie setup over exposing raw tokens to the browser.
 
 Small PKCE helpers are acceptable when no OAuth client library exists, but do not create custom JWT validation or permission functions.
+
+## Popup / web_message Login
+
+Optional alternative to the full-page redirect: the consumer opens Minerva's login in a
+popup so the user never leaves the app. It is **opt-in per request** — add
+`response_mode=web_message` to the `/authorize` URL. In this mode Minerva does not navigate
+the window to `redirect_uri`; it returns the result to the opener via `window.postMessage`
+and closes the popup. **No SDK change and no per-app Minerva config are required**; full-page
+redirect stays the default.
+
+Key points:
+- Open Minerva's **web panel** URL (where the login/authorize screen lives), which in dev may
+  differ from the issuer/API origin (e.g. `:3100` vs `:9000`). Token exchange still happens
+  server-to-server against the issuer.
+- The message payload is `{ source: "minerva", code, state, error }`. The denied case
+  (no role in the app) arrives as `{ error: "access_denied" }` on the same channel.
+- Minerva sends the `postMessage` with `targetOrigin = origin of redirect_uri` (never `"*"`).
+  Because Minerva validates `redirect_uri` against its allowlist before issuing the `code`,
+  the `code` can only reach an origin already registered as yours — that is the trust
+  boundary. Still, always validate `event.origin` in the listener before trusting the data.
+
+```js
+const MINERVA_ORIGIN = new URL(minervaWebUrl).origin;
+
+window.addEventListener("message", async (e) => {
+  if (e.origin !== MINERVA_ORIGIN || e.data?.source !== "minerva") return;
+  if (e.data.error) { /* access_denied / login_required → show "no access" */ return; }
+  // Exchange e.data.code server-to-server (with the code_verifier), never in the browser.
+  await fetch("/popup/exchange", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code: e.data.code, state: e.data.state }),
+  });
+});
+
+// Opening the popup:
+window.open(
+  `${MINERVA_ORIGIN}/authorize?client_id=${clientId}` +
+    `&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code` +
+    `&scope=openid%20profile%20email&state=${state}` +
+    `&code_challenge=${challenge}&code_challenge_method=S256&response_mode=web_message`,
+  "minerva-login", "width=480,height=680",
+);
+```
+
+Generate `state`/`code_verifier` the same way as the full-page flow and keep the verifier
+server-side (look it up by `state` when the opener posts the code back). See
+`examples/godin-consumer` (`/popup`, `/popup/exchange`) for a working reference.
 
 ## Public vs Confidential Clients
 
@@ -187,3 +241,15 @@ client_secret=<only for confidential client>
 - `500 MINERVA_APPLICATION_CODE no configurado`: set `MINERVA_APPLICATION_CODE`.
 - `502 No se pudo obtener el JWKS`: consumer cannot reach `MINERVA_ISSUER_URL`.
 - Redirect mismatch during login: register the exact `MINERVA_REDIRECT_URI` in Minerva.
+- `422` on `/callback` for some users: the callback requires `code`, but Minerva returned
+  `error=access_denied` (user has no role in the app) with no `code`. Make `code` optional
+  and handle `error` (see Browser Login Flow step 2).
+
+## Login Screen Branding
+
+The login screen can show the requesting app's name, logo, and color instead of the
+generic Minerva identity. This needs **no consumer or SDK change** — it is Minerva-side
+configuration only. An admin sets `display_name`, `logo_url`, and/or `brand_color` on the
+application (admin panel or `PATCH /applications/{id}`). Minerva's login page reads them
+from the public read-only endpoint `GET /public/apps/{client_id}/branding`, which exposes
+only those non-sensitive fields (never `client_secret` or redirect URIs).

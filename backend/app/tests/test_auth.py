@@ -136,3 +136,16 @@ def test_login_returns_503_when_redis_down(
     res = client.get("/api/auth/login", follow_redirects=False)
     assert res.status_code == 503, res.text
     assert "sesión" in res.json()["detail"]
+
+
+def test_callback_redirects_to_frontend_on_access_denied(client: TestClient) -> None:
+    """Minerva 0.2.0: sin rol en la app, redirige con error y sin code (nunca 422)."""
+    from app.core.config import get_settings
+
+    res = client.get(
+        "/api/auth/callback",
+        params={"error": "access_denied", "state": "s1"},
+        follow_redirects=False,
+    )
+    assert res.status_code in (302, 307), res.text
+    assert res.headers["location"] == f"{get_settings().FRONTEND_POST_LOGIN_URL}?error=access_denied"

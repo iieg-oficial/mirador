@@ -46,6 +46,22 @@ const NAV_MAIN: NavItem[] = [
     ),
   },
   {
+    to: '/admin/tableros',
+    label: 'Tableros',
+    icon: (
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+        d="M4 5a1 1 0 011-1h5a1 1 0 011 1v5a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm9 0a1 1 0 011-1h5a1 1 0 011 1v5a1 1 0 01-1 1h-5a1 1 0 01-1-1V5zM4 14a1 1 0 011-1h5a1 1 0 011 1v5a1 1 0 01-1 1H5a1 1 0 01-1-1v-5zm9 0a1 1 0 011-1h5a1 1 0 011 1v5a1 1 0 01-1 1h-5a1 1 0 01-1-1v-5z" />
+    ),
+  },
+  {
+    to: '/admin/tags',
+    label: 'Etiquetas',
+    icon: (
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+        d="M7 7h.01M7 3h5.586a1 1 0 01.707.293l7 7a1 1 0 010 1.414l-6.586 6.586a1 1 0 01-1.414 0l-7-7A1 1 0 015 10.586V4a1 1 0 011-1z" />
+    ),
+  },
+  {
     to: '/admin/publicacion',
     label: 'Publicación',
     disabled: true,

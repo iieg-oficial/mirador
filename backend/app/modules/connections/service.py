@@ -8,7 +8,7 @@ actualizando el `status` según el resultado (§6.2, §9.1).
 import uuid
 
 import psycopg
-from sqlmodel import Session, select
+from sqlmodel import Session, col, or_, select
 
 from app.core.db_external import make_conninfo
 from app.core.security import encrypt_secret
@@ -28,6 +28,8 @@ from app.modules.connections.schemas import (
     SchemaObjectType,
     SchemaResponse,
 )
+from app.modules.tags import service as tags_service
+from app.modules.tags.models import ConnectionTag
 
 # Motores que se prueban abriendo una conexión psycopg.
 _POSTGRES_ENGINES = {ConnectionEngine.postgresql, ConnectionEngine.postgis}
@@ -37,8 +39,22 @@ _CONNECT_TIMEOUT_SECONDS = 5
 _TEST_STATEMENT_TIMEOUT_MS = 5000
 
 
-def list_connections(session: Session) -> list[Connection]:
-    return list(session.exec(select(Connection)).all())
+def list_connections(
+    session: Session, q: str | None = None, tag_ids: list[uuid.UUID] | None = None
+) -> list[Connection]:
+    query = select(Connection)
+    if q:
+        pattern = f"%{q}%"
+        query = query.where(
+            or_(col(Connection.name).ilike(pattern), col(Connection.description).ilike(pattern))
+        )
+    for tag_id in tag_ids or []:
+        query = query.where(
+            col(Connection.id).in_(
+                select(ConnectionTag.connection_id).where(ConnectionTag.tag_id == tag_id)
+            )
+        )
+    return list(session.exec(query).all())
 
 
 def get_connection(session: Session, connection_id: uuid.UUID) -> Connection | None:
@@ -65,6 +81,10 @@ def create_connection(session: Session, data: ConnectionCreate, user: CurrentUse
     session.add(connection)
     session.commit()
     session.refresh(connection)
+    tags_service.set_entity_tags(
+        session, ConnectionTag, "connection_id", connection.id, data.tag_ids
+    )
+    session.refresh(connection)
     return connection
 
 
@@ -73,12 +93,17 @@ def update_connection(
 ) -> Connection:
     fields = data.model_dump(exclude_unset=True)
     password = fields.pop("password", None)
+    tag_ids = fields.pop("tag_ids", None)
     if password is not None:
         connection.encrypted_password = encrypt_secret(password)
     for key, value in fields.items():
         setattr(connection, key, value)
     session.add(connection)
     session.commit()
+    if tag_ids is not None:
+        tags_service.set_entity_tags(
+            session, ConnectionTag, "connection_id", connection.id, tag_ids
+        )
     session.refresh(connection)
     return connection
 

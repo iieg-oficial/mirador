@@ -20,7 +20,9 @@ from app.modules.auth.deps import require_app_access
 from app.modules.auth.router import router as auth_router
 from app.modules.charts.router import router as charts_router
 from app.modules.connections.router import router as connections_router
+from app.modules.dashboards.router import router as dashboards_router
 from app.modules.datasets.router import router as datasets_router
+from app.modules.tags.router import router as tags_router
 
 settings = get_settings()
 
@@ -29,7 +31,7 @@ log = logging.getLogger(__name__)
 
 app = FastAPI(
     title="Tablerillos API",
-    version="0.1.1",
+    version="0.2.0",
     description="Business Intelligence institucional del IIEG.",
 )
 
@@ -68,9 +70,11 @@ app.include_router(
 app.include_router(
     datasets_router, prefix="/api/admin/datasets", tags=["datasets"], dependencies=_admin
 )
+app.include_router(charts_router, prefix="/api/admin/charts", tags=["charts"], dependencies=_admin)
 app.include_router(
-    charts_router, prefix="/api/admin/charts", tags=["charts"], dependencies=_admin
+    dashboards_router, prefix="/api/admin/dashboards", tags=["dashboards"], dependencies=_admin
 )
+app.include_router(tags_router, prefix="/api/admin/tags", tags=["tags"], dependencies=_admin)
 
 
 @app.get("/health", tags=["meta"])

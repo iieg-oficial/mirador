@@ -45,7 +45,14 @@ Never replace this with local role checks, copied JWT decoding code, or a local 
 4. Implement delegated login only where needed:
    - Use OIDC Authorization Code + PKCE for browser login.
    - Store `state` and `code_verifier` in the consumer's normal session mechanism.
+   - In `/callback`, make `code` optional and handle the OAuth2 `error` param: a user with
+     no role in the app is redirected with `error=access_denied` and no `code`. Show a "no
+     access" screen instead of exchanging the token; a `code`-required signature 422s.
    - Exchange `code` at Minerva's `/auth/token` server-to-server.
+   - Optional popup login: add `response_mode=web_message` to the `/authorize` URL and open
+     it with `window.open`; Minerva returns `{code, state, error}` to the opener via
+     `postMessage` (validate `event.origin`) instead of a full-page redirect. Opt-in per
+     request, no SDK/backend change. See `references/consumer-contract.md`.
    - Use the `access_token` for API calls; use `id_token` only for identity claims.
    - Read `references/consumer-contract.md` before implementing `/login`, `/callback`, refresh, revoke, or protected routes.
 

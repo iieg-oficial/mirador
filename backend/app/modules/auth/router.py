@@ -67,10 +67,11 @@ async def callback(request: Request) -> RedirectResponse:
     error = request.query_params.get("error")
 
     if error:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Minerva rechazó el login: {error}",
-        )
+        # Minerva 0.2.0: un usuario sin rol en la app se redirige aquí con
+        # error=access_denied y sin code (antes se emitía code igual y el gate
+        # local de rol lo detectaba después). Se manda a la pantalla "sin
+        # acceso" en vez de tirar un error crudo; ver AuthGuard en el frontend.
+        return RedirectResponse(f"{settings.FRONTEND_POST_LOGIN_URL}?error={error}")
     if not code or not state:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
