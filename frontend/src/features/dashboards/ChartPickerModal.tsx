@@ -9,7 +9,7 @@ interface Props {
 }
 
 export function ChartPickerModal({ onPick, onClose }: Props) {
-  const { data: charts = [], isLoading } = useQuery({ queryKey: ['charts'], queryFn: listCharts })
+  const { data: charts = [], isLoading } = useQuery({ queryKey: ['charts'], queryFn: () => listCharts() })
   const available = charts.filter((c) => c.status !== 'archived')
 
   return (

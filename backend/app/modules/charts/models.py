@@ -9,9 +9,10 @@ import uuid
 from enum import Enum
 
 from sqlalchemy import Column, UniqueConstraint
-from sqlmodel import Field
+from sqlmodel import Field, Relationship
 
 from app.core.db_types import JSONVariant
+from app.modules.tags.models import ChartTag, Tag
 from app.shared.models import UUIDAuditBase
 
 
@@ -37,6 +38,7 @@ class Chart(UUIDAuditBase, table=True):
     chart_type: str = Field(max_length=40)
     chart_spec: dict = Field(sa_column=Column(JSONVariant, nullable=False))
     status: str = Field(default="draft", max_length=20)
+    tags: list[Tag] = Relationship(link_model=ChartTag)
 
 
 class ChartVersion(UUIDAuditBase, table=True):

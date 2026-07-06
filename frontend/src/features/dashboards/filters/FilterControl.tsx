@@ -13,7 +13,7 @@ interface Props {
   onOptions?: (filterId: string, options: FilterOption[]) => void
 }
 
-const inputCls = 'rounded border border-gray-200 px-2 py-1 text-xs focus:border-iieg-400 focus:outline-none'
+const inputCls = 'rounded border border-gray-200 px-2 py-1 text-xs focus:border-iieg-400 focus:outline-none focus:ring-1 focus:ring-iieg-400'
 
 function asArray(v: unknown): unknown[] {
   return Array.isArray(v) ? v : []

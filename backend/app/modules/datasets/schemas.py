@@ -8,6 +8,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, field_validator
 
 from app.modules.datasets.models import DatasetStatus
+from app.modules.tags.schemas import TagRead
 
 _SLUG_RE = re.compile(r"^[a-z0-9_-]+$")
 
@@ -53,12 +54,15 @@ class DatasetCreate(BaseModel):
     sql_query: str = Field(min_length=1)
     cache_ttl_seconds: int = Field(default=300, ge=0, le=86400)
     max_rows: int = Field(default=1000, ge=1, le=50000)
+    tag_ids: list[uuid.UUID] = Field(default_factory=list)
 
     @field_validator("slug")
     @classmethod
     def slug_format(cls, v: str) -> str:
         if not _SLUG_RE.match(v):
-            raise ValueError("El slug solo puede contener letras minúsculas, números, guiones y guiones bajos.")
+            raise ValueError(
+                "El slug solo puede contener letras minúsculas, números, guiones y guiones bajos."
+            )
         return v
 
 
@@ -72,6 +76,7 @@ class DatasetUpdate(BaseModel):
     # Edición manual de metadata semántica de columnas: los nombres deben
     # existir en el schema inferido; el tipo físico (data_type) no es editable.
     columns_schema: ColumnsSchemaPayload | None = None
+    tag_ids: list[uuid.UUID] | None = None
 
 
 class DatasetRead(BaseModel):
@@ -86,6 +91,7 @@ class DatasetRead(BaseModel):
     cache_ttl_seconds: int
     max_rows: int
     status: DatasetStatus
+    tags: list[TagRead] = Field(default_factory=list)
     created_by: str | None
     created_by_email: str | None
     created_at: datetime

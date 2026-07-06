@@ -1,8 +1,10 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query'
 import { createDataset, updateDataset } from './api'
 import { listConexiones } from '@/features/connections/api'
+import { TagPicker } from '@/components/shared/TagPicker'
+import { ErrorBanner } from '@/components/shared/ErrorBanner'
 import type { Dataset, DatasetCreate, DatasetUpdate } from '@/types/datasets'
 
 interface FormValues {
@@ -37,7 +39,7 @@ export function DatasetForm({ editing, prefill, onClose }: Props) {
 
   const { data: conexiones = [] } = useQuery({
     queryKey: ['conexiones'],
-    queryFn: listConexiones,
+    queryFn: () => listConexiones(),
   })
 
   const {
@@ -73,6 +75,8 @@ export function DatasetForm({ editing, prefill, onClose }: Props) {
     if (!isEdit) setValue('slug', slugify(nameValue))
   }, [nameValue, isEdit, setValue])
 
+  const [tagIds, setTagIds] = useState<string[]>(editing?.tags.map((t) => t.id) ?? [])
+
   const mutation = useMutation({
     mutationFn: (values: FormValues) => {
       if (isEdit) {
@@ -85,6 +89,7 @@ export function DatasetForm({ editing, prefill, onClose }: Props) {
           sql_query: values.sql_query,
           max_rows: values.max_rows,
           cache_ttl_seconds: values.cache_ttl_seconds,
+          tag_ids: tagIds,
         }
         return updateDataset(editing!.id, payload)
       }
@@ -96,6 +101,7 @@ export function DatasetForm({ editing, prefill, onClose }: Props) {
         sql_query: values.sql_query,
         max_rows: values.max_rows,
         cache_ttl_seconds: values.cache_ttl_seconds,
+        tag_ids: tagIds,
       }
       return createDataset(payload)
     },
@@ -126,7 +132,7 @@ export function DatasetForm({ editing, prefill, onClose }: Props) {
             <select
               {...register('connection_id', { required: 'Requerido' })}
               disabled={isEdit}
-              className="rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-iieg-500 focus:outline-none disabled:bg-gray-100 disabled:text-gray-500"
+              className="rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-iieg-500 focus:outline-none focus:ring-1 focus:ring-iieg-500 disabled:bg-gray-100 disabled:text-gray-500"
             >
               <option value="">— selecciona —</option>
               {conexiones
@@ -151,7 +157,7 @@ export function DatasetForm({ editing, prefill, onClose }: Props) {
               <label className="text-sm font-medium text-gray-700">Nombre *</label>
               <input
                 {...register('name', { required: 'Requerido', maxLength: { value: 120, message: 'Máximo 120 caracteres' } })}
-                className="rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-iieg-500 focus:outline-none"
+                className="rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-iieg-500 focus:outline-none focus:ring-1 focus:ring-iieg-500"
                 placeholder="Población municipal"
               />
               {errors.name && <p className="text-xs text-red-600">{errors.name.message}</p>}
@@ -165,7 +171,7 @@ export function DatasetForm({ editing, prefill, onClose }: Props) {
                   pattern: { value: /^[a-z0-9_-]+$/, message: 'Solo letras minúsculas, números, _ y -' },
                 })}
                 disabled={isEdit}
-                className="rounded-md border border-gray-300 px-3 py-2 font-mono text-sm focus:border-iieg-500 focus:outline-none disabled:bg-gray-100 disabled:text-gray-500"
+                className="rounded-md border border-gray-300 px-3 py-2 font-mono text-sm focus:border-iieg-500 focus:outline-none focus:ring-1 focus:ring-iieg-500 disabled:bg-gray-100 disabled:text-gray-500"
                 placeholder="poblacion_municipal"
               />
               {isEdit && (
@@ -180,7 +186,7 @@ export function DatasetForm({ editing, prefill, onClose }: Props) {
             <label className="text-sm font-medium text-gray-700">Descripción</label>
             <input
               {...register('description', { maxLength: { value: 500, message: 'Máximo 500 caracteres' } })}
-              className="rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-iieg-500 focus:outline-none"
+              className="rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-iieg-500 focus:outline-none focus:ring-1 focus:ring-iieg-500"
               placeholder="Opcional"
             />
           </div>
@@ -192,7 +198,7 @@ export function DatasetForm({ editing, prefill, onClose }: Props) {
               {...register('sql_query', { required: 'Requerido' })}
               rows={6}
               spellCheck={false}
-              className="rounded-md border border-gray-300 p-3 font-mono text-sm focus:border-iieg-500 focus:outline-none"
+              className="rounded-md border border-gray-300 p-3 font-mono text-sm focus:border-iieg-500 focus:outline-none focus:ring-1 focus:ring-iieg-500"
               placeholder="SELECT ..."
             />
             {errors.sql_query && (
@@ -207,7 +213,7 @@ export function DatasetForm({ editing, prefill, onClose }: Props) {
               <input
                 type="number"
                 {...register('max_rows', { valueAsNumber: true, min: { value: 1, message: 'Mínimo 1' }, max: { value: 50000, message: 'Máximo 50 000' } })}
-                className="rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-iieg-500 focus:outline-none"
+                className="rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-iieg-500 focus:outline-none focus:ring-1 focus:ring-iieg-500"
               />
             </div>
             <div className="flex flex-col gap-1">
@@ -215,16 +221,17 @@ export function DatasetForm({ editing, prefill, onClose }: Props) {
               <input
                 type="number"
                 {...register('cache_ttl_seconds', { valueAsNumber: true, min: { value: 0, message: 'Mínimo 0' }, max: { value: 86400, message: 'Máximo 86 400' } })}
-                className="rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-iieg-500 focus:outline-none"
+                className="rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-iieg-500 focus:outline-none focus:ring-1 focus:ring-iieg-500"
               />
             </div>
           </div>
 
-          {mutation.isError && (
-            <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
-              {mutation.error instanceof Error ? mutation.error.message : 'Error al guardar'}
-            </p>
-          )}
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium text-gray-700">Etiquetas</label>
+            <TagPicker value={tagIds} onChange={setTagIds} />
+          </div>
+
+          {mutation.isError && <ErrorBanner error={mutation.error} fallback="Error al guardar" />}
 
           <div className="flex justify-end gap-3 border-t border-gray-100 pt-4">
             <button type="button" onClick={onClose} className="rounded-md px-4 py-2 text-sm text-gray-600 hover:bg-gray-100">

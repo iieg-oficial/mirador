@@ -3,7 +3,7 @@
 import logging
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session
 
@@ -36,9 +36,7 @@ def _get_or_404(session: Session, dataset_id: uuid.UUID) -> Dataset:
 def _get_connection_or_404(session: Session, connection_id: uuid.UUID):  # type: ignore[return]
     conn = conn_service.get_connection(session, connection_id)
     if conn is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Conexión no encontrada"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conexión no encontrada")
     return conn
 
 
@@ -47,10 +45,12 @@ def _get_connection_or_404(session: Session, connection_id: uuid.UUID):  # type:
 
 @router.get("", response_model=list[DatasetRead])
 def list_datasets(
+    q: str | None = Query(default=None),
+    tag_ids: list[uuid.UUID] | None = Query(default=None),
     session: Session = Depends(get_session),
     _: CurrentUser = Depends(require_permission("tablerillos.datasets.view")),
 ) -> list[Dataset]:
-    return service.list_datasets(session)
+    return service.list_datasets(session, q, tag_ids)
 
 
 @router.post("", response_model=DatasetRead, status_code=status.HTTP_201_CREATED)

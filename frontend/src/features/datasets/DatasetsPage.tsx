@@ -4,6 +4,9 @@ import { listConexiones } from '@/features/connections/api'
 import { downloadCsv } from '@/lib/csv'
 import { listDatasets, deleteDataset, runPlayground } from './api'
 import { DatasetForm } from './DatasetForm'
+import { TagBadge } from '@/components/shared/TagBadge'
+import { ErrorBanner } from '@/components/shared/ErrorBanner'
+import { TagFilterBar } from '@/features/tags/TagFilterBar'
 import type { Dataset, DatasetStatus, PreviewResult } from '@/types/datasets'
 
 // ── Badge de estado ───────────────────────────────────────────────────────────
@@ -122,9 +125,11 @@ function DatasetList({
   onOpenInPlayground: (d: Dataset) => void
 }) {
   const qc = useQueryClient()
+  const [q, setQ] = useState('')
+  const [tagIds, setTagIds] = useState<string[]>([])
   const { data: datasets = [], isLoading, error } = useQuery({
-    queryKey: ['datasets'],
-    queryFn: listDatasets,
+    queryKey: ['datasets', q, tagIds],
+    queryFn: () => listDatasets({ q, tagIds }),
   })
 
   const deleteMutation = useMutation({
@@ -135,25 +140,34 @@ function DatasetList({
   if (isLoading) return <p className="py-6 text-center text-sm text-gray-400">Cargando…</p>
   if (error) return <p className="py-6 text-center text-sm text-red-600">Error al cargar datasets.</p>
 
-  if (datasets.length === 0) {
-    return (
-      <div className="flex h-64 flex-col items-center justify-center gap-3 text-center">
-        <svg className="h-12 w-12 text-gray-200" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1}
-            d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-        </svg>
-        <div>
-          <p className="text-sm font-medium text-gray-500">Sin datasets guardados</p>
-          <p className="mt-0.5 text-xs text-gray-400">
-            Ve al Playground SQL, escribe una consulta y guárdala como dataset.
-          </p>
-        </div>
-      </div>
-    )
-  }
-
   return (
-    <div className="overflow-hidden rounded-xl border border-gray-100">
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-3">
+        <input
+          type="text"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Buscar dataset…"
+          className="w-64 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm focus:border-iieg-400 focus:outline-none focus:ring-1 focus:ring-iieg-400"
+        />
+        <TagFilterBar value={tagIds} onChange={setTagIds} />
+      </div>
+
+      {datasets.length === 0 ? (
+        <div className="flex h-64 flex-col items-center justify-center gap-3 text-center">
+          <svg className="h-12 w-12 text-gray-200" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1}
+              d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+          <div>
+            <p className="text-sm font-medium text-gray-500">Sin datasets guardados</p>
+            <p className="mt-0.5 text-xs text-gray-400">
+              Ve al Playground SQL, escribe una consulta y guárdala como dataset.
+            </p>
+          </div>
+        </div>
+      ) : (
+      <div className="overflow-hidden rounded-xl border border-gray-100">
       <table className="min-w-full text-sm">
         <thead className="bg-gray-50 text-xs text-gray-500">
           <tr>
@@ -173,6 +187,13 @@ function DatasetList({
                   <p className="mt-0.5 max-w-xs truncate text-xs font-normal text-gray-400">
                     {ds.description}
                   </p>
+                )}
+                {ds.tags.length > 0 && (
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {ds.tags.map((t) => (
+                      <TagBadge key={t.id} tag={t} />
+                    ))}
+                  </div>
                 )}
               </td>
               <td className="px-4 py-3"><StatusBadge status={ds.status} /></td>
@@ -220,6 +241,8 @@ function DatasetList({
           ))}
         </tbody>
       </table>
+      </div>
+      )}
     </div>
   )
 }
@@ -247,7 +270,7 @@ function Playground({
 
   const { data: conexiones = [] } = useQuery({
     queryKey: ['conexiones'],
-    queryFn: listConexiones,
+    queryFn: () => listConexiones(),
   })
 
   const runMutation = useMutation({
@@ -268,7 +291,7 @@ function Playground({
             <select
               value={connectionId}
               onChange={(e) => { setConnectionId(e.target.value); setResult(null) }}
-              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:border-iieg-400 focus:outline-none"
+              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:border-iieg-400 focus:outline-none focus:ring-1 focus:ring-iieg-400"
             >
               <option value="">— Seleccionar —</option>
               {conexiones
@@ -289,7 +312,7 @@ function Playground({
             <select
               value={maxRows}
               onChange={(e) => setMaxRows(Number(e.target.value))}
-              className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:border-iieg-400 focus:outline-none"
+              className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:border-iieg-400 focus:outline-none focus:ring-1 focus:ring-iieg-400"
             >
               {[50, 100, 500, 1000, 5000].map((n) => (
                 <option key={n} value={n}>{n.toLocaleString('es-MX')} filas</option>
@@ -367,7 +390,7 @@ function Playground({
                 }
                 disabled={!connectionId}
                 spellCheck={false}
-                className="flex-1 resize-none rounded-lg border border-gray-200 bg-gray-50/60 p-3 font-mono text-sm leading-relaxed text-gray-900 placeholder-gray-400 focus:border-iieg-400 focus:bg-white focus:outline-none disabled:bg-gray-50 disabled:text-gray-400"
+                className="flex-1 resize-none rounded-lg border border-gray-200 bg-gray-50/60 p-3 font-mono text-sm leading-relaxed text-gray-900 placeholder-gray-400 focus:border-iieg-400 focus:bg-white focus:outline-none focus:ring-1 focus:ring-iieg-400 disabled:bg-gray-50 disabled:text-gray-400"
                 style={{ minHeight: '280px' }}
               />
               <p className="mt-2 text-xs text-gray-400">
@@ -409,12 +432,11 @@ function Playground({
             )}
 
             {runMutation.isError && (
-              <div className="rounded-xl border border-red-100 bg-red-50 p-4">
-                <p className="text-sm font-semibold text-red-700">Error al ejecutar la consulta</p>
-                <p className="mt-1 text-xs text-red-600">
-                  {runMutation.error instanceof Error ? runMutation.error.message : 'Error desconocido'}
-                </p>
-              </div>
+              <ErrorBanner
+                error={runMutation.error}
+                fallback="Error desconocido"
+                title="Error al ejecutar la consulta"
+              />
             )}
 
             {result && <ResultTable result={result} />}

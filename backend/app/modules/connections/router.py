@@ -14,7 +14,7 @@ auth, nunca el SDK directo). Mapeo de permisos (ver `manifest.minerva.yml`):
 import logging
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlmodel import Session
 
 from app.core.database import get_session
@@ -44,10 +44,12 @@ def _get_or_404(session: Session, connection_id: uuid.UUID) -> Connection:
 
 @router.get("", response_model=list[ConnectionRead])
 def list_connections(
+    q: str | None = Query(default=None),
+    tag_ids: list[uuid.UUID] | None = Query(default=None),
     session: Session = Depends(get_session),
     _: CurrentUser = Depends(require_permission("tablerillos.connections.view")),
 ) -> list[Connection]:
-    return service.list_connections(session)
+    return service.list_connections(session, q, tag_ids)
 
 
 @router.post("", response_model=ConnectionRead, status_code=status.HTTP_201_CREATED)

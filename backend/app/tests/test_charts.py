@@ -262,6 +262,109 @@ def test_preview_chart(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> N
     assert "GROUP BY" in body["generated_sql"]
 
 
+# ── Gráfica de código (sandbox JS + ECharts) ──────────────────────────────────
+
+
+def test_create_code_chart_ok(client: TestClient) -> None:
+    """Una gráfica de código se guarda sin encodings; el `code` persiste en la spec."""
+    dataset_id = _create_dataset(client)
+    payload = {
+        "name": "Barras a mano",
+        "chart_spec": _spec(
+            dataset_id,
+            encodings={"x": [], "y": []},  # sin mapeo: el código controla el render
+            code="return { series: [{ type: 'bar', data: rows.map(r => r.poblacion) }] }",
+        ),
+    }
+    res = client.post("/api/admin/charts", json=payload)
+    assert res.status_code == 201, res.text
+    assert res.json()["chart_spec"]["code"].startswith("return")
+
+
+def test_code_chart_preview_selects_raw_rows(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """El preview de una gráfica de código entrega filas crudas (SELECT *), no agregadas."""
+    dataset_id = _create_dataset(client)
+    created = client.post(
+        "/api/admin/charts",
+        json={
+            "name": "Código",
+            "chart_spec": _spec(
+                dataset_id, encodings={"x": [], "y": []}, code="return {}"
+            ),
+        },
+    ).json()
+
+    captured: dict[str, str] = {}
+
+    def fake_run_query(connection, sql, params, max_rows, **kwargs):  # type: ignore[no-untyped-def]
+        captured["sql"] = sql
+        return PreviewResult(
+            columns=[ColumnMeta(name="municipio", data_type="text")],
+            rows=[{"municipio": "Guadalajara"}],
+            total_rows=1,
+            truncated=False,
+            elapsed_ms=1.0,
+        )
+
+    monkeypatch.setattr(datasets_service, "run_query", fake_run_query)
+    res = client.post(f"/api/admin/charts/{created['id']}/preview")
+    assert res.status_code == 200, res.text
+    # Sin agregación: SELECT * de la subconsulta del dataset, sin GROUP BY.
+    assert captured["sql"].startswith("SELECT * FROM (")
+    assert "GROUP BY" not in captured["sql"]
+
+
+def test_code_chart_plotly_engine(client: TestClient) -> None:
+    """code_engine='plotly' persiste en la spec y el renderer del Chart lo refleja."""
+    dataset_id = _create_dataset(client)
+    res = client.post(
+        "/api/admin/charts",
+        json={
+            "name": "Plotly en Python",
+            "chart_spec": _spec(
+                dataset_id,
+                encodings={"x": [], "y": []},
+                code="fig = px.bar(rows)",
+                code_engine="plotly",
+            ),
+        },
+    )
+    assert res.status_code == 201, res.text
+    body = res.json()
+    assert body["chart_spec"]["code_engine"] == "plotly"
+    assert body["renderer"] == "plotly"
+
+    # Si deja de ser de código Python, el renderer regresa a echarts
+    # (y sin código vuelven a exigirse los encodings).
+    spec = body["chart_spec"]
+    spec["code"] = None
+    spec["code_engine"] = "echarts"
+    spec["encodings"] = {
+        "x": [{"field": "municipio"}],
+        "y": [{"field": "poblacion", "aggregation": "sum"}],
+    }
+    res = client.put(f"/api/admin/charts/{body['id']}", json={"chart_spec": spec})
+    assert res.status_code == 200, res.text
+    assert res.json()["renderer"] == "echarts"
+
+
+def test_code_chart_engine_defaults_to_echarts(client: TestClient) -> None:
+    """Specs viejas sin code_engine siguen siendo válidas: default 'echarts'."""
+    dataset_id = _create_dataset(client)
+    res = client.post(
+        "/api/admin/charts",
+        json={
+            "name": "Código sin motor",
+            "chart_spec": _spec(dataset_id, encodings={"x": [], "y": []}, code="return {}"),
+        },
+    )
+    assert res.status_code == 201, res.text
+    assert res.json()["chart_spec"]["code_engine"] == "echarts"
+    assert res.json()["renderer"] == "echarts"
+
+
 def test_admin_endpoint_requires_tablerillos_role(client: TestClient) -> None:
     """Un usuario de Minerva sin rol en Tablerillos es rechazado por require_app_access."""
     fastapi_app.dependency_overrides[get_current_user] = lambda: CurrentUser(sub="sin-rol", roles=[])

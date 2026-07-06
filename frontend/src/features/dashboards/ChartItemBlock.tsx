@@ -2,6 +2,7 @@ import { useEffect, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { getChart, previewSpec } from '@/features/charts/api'
 import { ChartRenderer } from '@/features/charts/ChartRenderer'
+import { ErrorBanner } from '@/components/shared/ErrorBanner'
 import type { ChartExportInfo } from '@/features/charts/ChartRenderer'
 import type { FilterSpec } from '@/types/charts'
 import type { DashboardItemRead } from '@/types/dashboards'
@@ -84,8 +85,8 @@ export function ChartItemBlock({
 
   if (chartError || previewError) {
     return (
-      <div className={`flex h-full items-center justify-center p-3 text-center text-xs text-red-600 ${className}`}>
-        {((chartError ?? previewError) as Error).message}
+      <div className={`flex h-full items-center justify-center p-3 text-center ${className}`}>
+        <ErrorBanner error={chartError ?? previewError} compact small />
       </div>
     )
   }

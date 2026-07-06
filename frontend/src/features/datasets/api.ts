@@ -16,8 +16,12 @@ async function parseResponse<T>(res: Response): Promise<T> {
   return res.json()
 }
 
-export async function listDatasets(): Promise<Dataset[]> {
-  return parseResponse(await fetch(BASE))
+export async function listDatasets(filters?: { q?: string; tagIds?: string[] }): Promise<Dataset[]> {
+  const params = new URLSearchParams()
+  if (filters?.q) params.set('q', filters.q)
+  for (const id of filters?.tagIds ?? []) params.append('tag_ids', id)
+  const qs = params.toString()
+  return parseResponse(await fetch(qs ? `${BASE}?${qs}` : BASE))
 }
 
 export async function getDataset(id: string): Promise<Dataset> {

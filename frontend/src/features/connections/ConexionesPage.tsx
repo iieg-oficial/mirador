@@ -3,6 +3,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { listConexiones, testConexion, deleteConexion } from './api'
 import { ConexionForm } from './ConexionForm'
 import { SchemaExplorer } from './SchemaExplorer'
+import { TagBadge } from '@/components/shared/TagBadge'
+import { ErrorBanner } from '@/components/shared/ErrorBanner'
+import { TagFilterBar } from '@/features/tags/TagFilterBar'
 import type { Connection, ConnectionStatus } from '@/types/connections'
 
 // ── Semáforo ──────────────────────────────────────────────────────────────────
@@ -100,6 +103,14 @@ function ConexionCard({
         </p>
       )}
 
+      {connection.tags.length > 0 && (
+        <div className="mt-1.5 flex flex-wrap gap-1">
+          {connection.tags.map((t) => (
+            <TagBadge key={t.id} tag={t} />
+          ))}
+        </div>
+      )}
+
       {/* Acciones */}
       <div
         className="mt-3 flex items-center gap-1"
@@ -171,16 +182,18 @@ export function ConexionesPage() {
   const qc = useQueryClient()
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [formState, setFormState] = useState<FormState>(null)
+  const [q, setQ] = useState('')
+  const [tagIds, setTagIds] = useState<string[]>([])
 
   const { data: conexiones, isLoading, error } = useQuery({
-    queryKey: ['conexiones'],
-    queryFn: listConexiones,
+    queryKey: ['conexiones', q, tagIds],
+    queryFn: () => listConexiones({ q, tagIds }),
   })
 
   const testMutation = useMutation({
     mutationFn: testConexion,
     onSuccess: (result, id) => {
-      qc.setQueryData<Connection[]>(['conexiones'], (prev) =>
+      qc.setQueriesData<Connection[]>({ queryKey: ['conexiones'] }, (prev) =>
         prev?.map((c) =>
           c.id === id ? { ...c, status: result.status, last_test_error: result.detail } : c,
         ),
@@ -191,7 +204,7 @@ export function ConexionesPage() {
   const deleteMutation = useMutation({
     mutationFn: deleteConexion,
     onSuccess: (_, id) => {
-      qc.setQueryData<Connection[]>(['conexiones'], (prev) =>
+      qc.setQueriesData<Connection[]>({ queryKey: ['conexiones'] }, (prev) =>
         prev?.filter((c) => c.id !== id),
       )
       if (selectedId === id) setSelectedId(null)
@@ -233,22 +246,27 @@ export function ConexionesPage() {
                 Conexiones ({visibles.length})
               </p>
               <div className="flex gap-2">
-                <div className="flex flex-1 items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-1.5">
+                <div className="flex flex-1 items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-1.5 focus-within:border-iieg-400 focus-within:ring-1 focus-within:ring-iieg-400">
                   <svg className="h-3.5 w-3.5 flex-shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                       d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                   </svg>
                   <input
                     type="text"
+                    value={q}
+                    onChange={(e) => setQ(e.target.value)}
                     placeholder="Buscar conexión…"
                     className="flex-1 bg-transparent text-xs text-gray-700 placeholder-gray-400 focus:outline-none"
                   />
                 </div>
-                <select className="rounded-lg border border-gray-200 bg-gray-50 px-2 py-1.5 text-xs text-gray-600 focus:outline-none">
+                <select className="rounded-lg border border-gray-200 bg-gray-50 px-2 py-1.5 text-xs text-gray-600 focus:border-iieg-400 focus:outline-none focus:ring-1 focus:ring-iieg-400">
                   <option>Todas</option>
                   <option>Activas</option>
                   <option>Con error</option>
                 </select>
+              </div>
+              <div className="mt-2">
+                <TagFilterBar value={tagIds} onChange={setTagIds} />
               </div>
             </div>
             <div className="p-3">
@@ -261,11 +279,7 @@ export function ConexionesPage() {
               </div>
             )}
 
-            {error && (
-              <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">
-                {(error as Error).message}
-              </div>
-            )}
+            {error && <ErrorBanner error={error} />}
 
             {!isLoading && visibles.length === 0 && (
               <div className="py-12 text-center">

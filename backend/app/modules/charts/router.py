@@ -23,6 +23,7 @@ from app.modules.charts.schemas import (
 from app.modules.charts.spec import ChartSpecValidation
 from app.modules.connections import service as conn_service
 from app.modules.datasets import service as dataset_service
+
 router = APIRouter()
 log = logging.getLogger(__name__)
 
@@ -87,11 +88,13 @@ def preview_chart_spec(
 @router.get("", response_model=list[ChartRead])
 def list_charts(
     status_filter: ChartStatus | None = Query(default=None, alias="status"),
+    q: str | None = Query(default=None),
+    tag_ids: list[uuid.UUID] | None = Query(default=None),
     session: Session = Depends(get_session),
     _: CurrentUser = Depends(require_permission("tablerillos.charts.view")),
 ) -> list[Chart]:
     """Sin filtro excluye archivadas; con ?status= devuelve solo ese estado."""
-    return service.list_charts(session, status_filter)
+    return service.list_charts(session, status_filter, q, tag_ids)
 
 
 @router.post("", response_model=ChartRead, status_code=status.HTTP_201_CREATED)

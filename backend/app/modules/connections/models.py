@@ -12,8 +12,9 @@ Cada `Connection` es una fuente de datos registrada por un administrador. Ver
 
 import enum
 
-from sqlmodel import Field
+from sqlmodel import Field, Relationship
 
+from app.modules.tags.models import ConnectionTag, Tag
 from app.shared.models import UUIDAuditBase
 
 
@@ -56,3 +57,4 @@ class Connection(UUIDAuditBase, table=True):
     status: ConnectionStatus = Field(default=ConnectionStatus.inactiva)
     # Resultado/diagnóstico de la última prueba de conexión (legible).
     last_test_error: str | None = Field(default=None, max_length=500)
+    tags: list[Tag] = Relationship(link_model=ConnectionTag)

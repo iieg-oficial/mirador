@@ -143,6 +143,14 @@ class ChartSpec(BaseModel):
     # Overrides controlados sobre el EChartsOption generado (Fase 5): JSON puro
     # (sin funciones), solo secciones visuales de la whitelist.
     overrides: dict[str, Any] | None = None
+    # Gráfica "de código": JS que el frontend ejecuta para armar el EChartsOption
+    # a partir de las filas del dataset (herramienta interna, ver SandboxEditor).
+    # Cuando está presente, los encodings no aplican y el backend solo entrega
+    # las filas crudas del dataset (query_builder).
+    code: str | None = Field(default=None, max_length=20_000)
+    # Motor de la gráfica de código: 'echarts' ejecuta JS en el navegador;
+    # 'plotly' ejecuta Python (Pyodide) y renderiza la figura con plotly.js.
+    code_engine: Literal["echarts", "plotly"] = "echarts"
 
     @field_validator("overrides")
     @classmethod
@@ -241,6 +249,19 @@ def validate_spec_against_dataset(
     warnings: list[str] = []
 
     columns = {c["name"]: c for c in (dataset.columns_schema or {}).get("columns", [])}
+
+    # Gráfica de código: el JS del frontend controla el render; no hay encodings
+    # que validar. Solo se comprueba que filtros/orden (p.ej. filtros globales de
+    # un tablero) referencien columnas reales del dataset.
+    if spec.code and spec.code.strip():
+        if columns:
+            refs = {f.field for f in spec.data.filters} | {s.field for s in spec.data.sort}
+            unknown = sorted(refs - set(columns))
+            if unknown:
+                errors.append(
+                    f"Filtros/orden referencian columnas inexistentes: {', '.join(unknown)}."
+                )
+        return errors, warnings
 
     # Solo se validan campos si el dataset ya tiene columnas inferidas.
     if columns:
