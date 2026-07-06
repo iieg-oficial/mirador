@@ -20,8 +20,12 @@ async function parseResponse<T>(res: Response): Promise<T> {
   return res.json() as Promise<T>
 }
 
-export async function listConexiones(): Promise<Connection[]> {
-  return parseResponse(await fetch(BASE))
+export async function listConexiones(filters?: { q?: string; tagIds?: string[] }): Promise<Connection[]> {
+  const params = new URLSearchParams()
+  if (filters?.q) params.set('q', filters.q)
+  for (const id of filters?.tagIds ?? []) params.append('tag_ids', id)
+  const qs = params.toString()
+  return parseResponse(await fetch(qs ? `${BASE}?${qs}` : BASE))
 }
 
 export async function createConexion(data: ConnectionCreate): Promise<Connection> {

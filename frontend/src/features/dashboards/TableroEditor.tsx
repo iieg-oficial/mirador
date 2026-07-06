@@ -6,6 +6,7 @@ import type { Layout } from 'react-grid-layout/legacy'
 import 'react-grid-layout/css/styles.css'
 import { getDashboard, replaceItems, updateDashboard } from './api'
 import { ChartItemBlock } from './ChartItemBlock'
+import { ErrorBanner } from '@/components/shared/ErrorBanner'
 import { MarkdownItemBlock } from './MarkdownItemBlock'
 import { ChartPickerModal } from './ChartPickerModal'
 import { DashboardFilterBar } from './filters/DashboardFilterBar'
@@ -405,7 +406,7 @@ export function TableroEditor() {
           </h1>
         </div>
         <div className="flex items-center gap-2">
-          {saveError && <p className="text-xs text-red-600">{saveError}</p>}
+          {saveError && <ErrorBanner error={saveError} compact small />}
           {!previewMode && (
             <>
               <button
@@ -662,7 +663,7 @@ export function TableroEditor() {
                       value={String(selectedItem.local_config.variable_key ?? '')}
                       onChange={(e) => updateLocalConfig(selectedItem.id, { variable_key: e.target.value })}
                       placeholder="p.ej. total_ventas"
-                      className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-iieg-400 focus:outline-none"
+                      className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-iieg-400 focus:outline-none focus:ring-1 focus:ring-iieg-400"
                     />
                     <p className="text-[11px] text-gray-400">
                       Disponible en Markdown como{' '}
@@ -681,7 +682,7 @@ export function TableroEditor() {
                     value={String(selectedItem.local_config.content ?? '')}
                     onChange={(e) => updateLocalConfig(selectedItem.id, { content: e.target.value })}
                     rows={10}
-                    className="rounded-lg border border-gray-200 px-3 py-2 font-mono text-xs focus:border-iieg-400 focus:outline-none"
+                    className="rounded-lg border border-gray-200 px-3 py-2 font-mono text-xs focus:border-iieg-400 focus:outline-none focus:ring-1 focus:ring-iieg-400"
                   />
                 </div>
                 <div>

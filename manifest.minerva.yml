@@ -43,6 +43,11 @@ permissions:
   - { key: tablerillos.charts.create,       name: Crear gráficas }
   - { key: tablerillos.charts.update,       name: Editar gráficas }
   - { key: tablerillos.charts.delete,       name: Eliminar gráficas }
+  # ----- Etiquetas (catalogación) -----
+  - { key: tablerillos.tags.view,           name: Ver etiquetas }
+  - { key: tablerillos.tags.create,         name: Crear etiquetas }
+  - { key: tablerillos.tags.update,         name: Editar etiquetas }
+  - { key: tablerillos.tags.delete,         name: Eliminar etiquetas }
   # ----- Dashboards -----
   - { key: tablerillos.dashboards.view,     name: Ver dashboards }
   - { key: tablerillos.dashboards.create,   name: Crear dashboards }
@@ -71,6 +76,10 @@ roles:
       - tablerillos.charts.create
       - tablerillos.charts.update
       - tablerillos.charts.delete
+      - tablerillos.tags.view
+      - tablerillos.tags.create
+      - tablerillos.tags.update
+      - tablerillos.tags.delete
       - tablerillos.dashboards.view
       - tablerillos.dashboards.create
       - tablerillos.dashboards.update
@@ -92,6 +101,10 @@ roles:
       - tablerillos.charts.create
       - tablerillos.charts.update
       - tablerillos.charts.delete
+      - tablerillos.tags.view
+      - tablerillos.tags.create
+      - tablerillos.tags.update
+      - tablerillos.tags.delete
       - tablerillos.dashboards.view
       - tablerillos.dashboards.create
       - tablerillos.dashboards.update
@@ -105,6 +118,8 @@ roles:
       - tablerillos.charts.view
       - tablerillos.charts.create
       - tablerillos.charts.update
+      - tablerillos.tags.view
+      - tablerillos.tags.create
       - tablerillos.dashboards.view
       - tablerillos.dashboards.create
       - tablerillos.dashboards.update

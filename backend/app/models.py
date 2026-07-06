@@ -12,3 +12,4 @@ from app.modules.connections.models import Connection  # noqa: F401,E402
 from app.modules.datasets.models import Dataset  # noqa: F401,E402
 from app.modules.charts.models import Chart  # noqa: F401,E402
 from app.modules.dashboards.models import Dashboard, DashboardItem  # noqa: F401,E402
+from app.modules.tags.models import Tag, ConnectionTag, DatasetTag, ChartTag  # noqa: F401,E402

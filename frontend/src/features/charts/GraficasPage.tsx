@@ -17,6 +17,10 @@ import type { ChartPreviewResult } from './api'
 import { ChartRenderer } from './ChartRenderer'
 import { ChartTypePicker } from './ChartTypePicker'
 import { SandboxEditor } from './SandboxEditor'
+import { TagBadge } from '@/components/shared/TagBadge'
+import { TagPicker } from '@/components/shared/TagPicker'
+import { ErrorBanner } from '@/components/shared/ErrorBanner'
+import { TagFilterBar } from '@/features/tags/TagFilterBar'
 import { draftToFilter, filterToDraft } from './filters'
 import type { FilterDraft } from './filters'
 import type {
@@ -165,7 +169,7 @@ function Select({
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:border-iieg-400 focus:outline-none"
+        className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:border-iieg-400 focus:outline-none focus:ring-1 focus:ring-iieg-400"
       >
         <option value="">{placeholder}</option>
         {options.map((o) => (
@@ -417,6 +421,14 @@ function ChartCard({
         <p className="mb-2 text-xs text-gray-500 line-clamp-2">{chart.description}</p>
       )}
 
+      {chart.tags.length > 0 && (
+        <div className="mb-2 flex flex-wrap gap-1">
+          {chart.tags.map((t) => (
+            <TagBadge key={t.id} tag={t} />
+          ))}
+        </div>
+      )}
+
       <p className="text-xs text-gray-400">
         Dataset:{' '}
         <span className="font-medium text-gray-600">{dataset?.name ?? '—'}</span>
@@ -498,6 +510,7 @@ interface BuilderState {
   showLegend: boolean
   legendPosition: LegendPosition
   showDownload: boolean
+  tagIds: string[]
 }
 
 const BUILDER_DEFAULTS: BuilderState = {
@@ -519,12 +532,18 @@ const BUILDER_DEFAULTS: BuilderState = {
   showLegend: true,
   legendPosition: 'top',
   showDownload: false,
+  tagIds: [],
 }
 
 // Vuelca una spec al estado del builder visual (best-effort: encodings de
 // tooltip/size u ordenamientos múltiples del modo avanzado no tienen control
 // visual y se conservan solo mientras se edita en JSON).
-function stateFromSpec(spec: ChartSpec, name: string, description: string): BuilderState {
+function stateFromSpec(
+  spec: ChartSpec,
+  name: string,
+  description: string,
+  tagIds: string[] = [],
+): BuilderState {
   const aggregations: Record<string, Aggregation | ''> = {}
   for (const e of spec.encodings.y) {
     if (e.aggregation) aggregations[e.field] = e.aggregation
@@ -548,11 +567,17 @@ function stateFromSpec(spec: ChartSpec, name: string, description: string): Buil
     showLegend: spec.interactions.legend,
     legendPosition: spec.style.legend_position,
     showDownload: spec.interactions.download,
+    tagIds,
   }
 }
 
 function builderFromChart(chart: Chart): BuilderState {
-  return stateFromSpec(chart.chart_spec, chart.name, chart.description ?? '')
+  return stateFromSpec(
+    chart.chart_spec,
+    chart.name,
+    chart.description ?? '',
+    chart.tags.map((t) => t.id),
+  )
 }
 
 // Construye la ChartSpec canónica desde el estado del builder visual.
@@ -765,12 +790,14 @@ function ChartBuilder({
           description: state.description || null,
           chart_spec: chartSpec,
           change_comment: changeComment || null,
+          tag_ids: state.tagIds,
         })
       }
       return createChart({
         name: state.name,
         description: state.description || null,
         chart_spec: chartSpec,
+        tag_ids: state.tagIds,
       })
     },
     onSuccess: () => {
@@ -821,7 +848,7 @@ function ChartBuilder({
               value={state.name}
               onChange={(e) => set('name', e.target.value)}
               placeholder="Nombre de la gráfica"
-              className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-iieg-400 focus:outline-none"
+              className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-iieg-400 focus:outline-none focus:ring-1 focus:ring-iieg-400"
             />
           </div>
           <div className="col-span-1 flex flex-col gap-1">
@@ -831,7 +858,7 @@ function ChartBuilder({
               value={state.description}
               onChange={(e) => set('description', e.target.value)}
               placeholder="Descripción opcional"
-              className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-iieg-400 focus:outline-none"
+              className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-iieg-400 focus:outline-none focus:ring-1 focus:ring-iieg-400"
             />
           </div>
           <Select
@@ -855,6 +882,10 @@ function ChartBuilder({
             onChange={(v) => changeChartType(v as ChartType)}
             options={CHART_TYPES.map((t) => ({ value: t, label: CHART_TYPE_LABELS[t] }))}
           />
+        </div>
+        <div className="mt-3 max-w-sm">
+          <label className="mb-1 block text-xs font-semibold text-gray-600">Etiquetas</label>
+          <TagPicker value={state.tagIds} onChange={(v) => set('tagIds', v)} />
         </div>
       </div>
 
@@ -917,7 +948,7 @@ function ChartBuilder({
         {mode === 'visual' && (
         <div className="w-64 flex-shrink-0 space-y-4 overflow-y-auto border-r border-gray-100 bg-white p-4">
           <div>
-            <p className="mb-2 text-xs font-bold uppercase tracking-wider text-gray-400">
+            <p className="mb-2 text-xs font-semibold text-gray-500">
               Esquema del dataset
             </p>
 
@@ -949,7 +980,7 @@ function ChartBuilder({
           </div>
 
           <div className="space-y-3 border-t border-gray-100 pt-4">
-            <p className="text-xs font-bold uppercase tracking-wider text-gray-400">
+            <p className="text-xs font-semibold text-gray-500">
               Mapeo de campos
             </p>
             <p className="text-[11px] text-gray-400">
@@ -1020,11 +1051,7 @@ function ChartBuilder({
                     </details>
                   </div>
                 ))}
-                {restoreMutation.isError && (
-                  <p className="text-xs text-red-600">
-                    {(restoreMutation.error as Error).message}
-                  </p>
-                )}
+                {restoreMutation.isError && <ErrorBanner error={restoreMutation.error} compact small />}
               </div>
             )}
           </div>
@@ -1060,9 +1087,7 @@ function ChartBuilder({
           </div>
 
           <div className="flex-1 p-4">
-            {previewError && (
-              <div className="rounded-lg bg-red-50 p-4 text-sm text-red-700">{previewError}</div>
-            )}
+            {previewError && <ErrorBanner error={previewError} />}
 
             {!previewError && showChart && (
               <div className="h-full min-h-[300px] rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
@@ -1134,7 +1159,7 @@ function ChartBuilder({
         {/* Derecha: config visual (solo en modo visual) */}
         {mode === 'visual' && (
         <div className="w-56 flex-shrink-0 space-y-4 overflow-y-auto border-l border-gray-100 bg-white p-4">
-          <p className="text-xs font-bold uppercase tracking-wider text-gray-400">
+          <p className="text-xs font-semibold text-gray-500">
             Configuración visual
           </p>
 
@@ -1145,7 +1170,7 @@ function ChartBuilder({
               value={state.title}
               onChange={(e) => set('title', e.target.value)}
               placeholder="Título de la gráfica"
-              className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-iieg-400 focus:outline-none"
+              className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-iieg-400 focus:outline-none focus:ring-1 focus:ring-iieg-400"
             />
           </div>
 
@@ -1156,7 +1181,7 @@ function ChartBuilder({
               value={state.subtitle}
               onChange={(e) => set('subtitle', e.target.value)}
               placeholder="Subtítulo opcional"
-              className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-iieg-400 focus:outline-none"
+              className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-iieg-400 focus:outline-none focus:ring-1 focus:ring-iieg-400"
             />
           </div>
 
@@ -1185,7 +1210,7 @@ function ChartBuilder({
           {/* Agregaciones por métrica (según la metadata semántica del dataset) */}
           {state.fieldY.length > 0 && (
             <div className="space-y-2 border-t border-gray-100 pt-4">
-              <p className="text-xs font-bold uppercase tracking-wider text-gray-400">
+              <p className="text-xs font-semibold text-gray-500">
                 Agregaciones
               </p>
               {state.fieldY.map((field) => {
@@ -1215,7 +1240,7 @@ function ChartBuilder({
           {/* Filtros */}
           <div className="space-y-2 border-t border-gray-100 pt-4">
             <div className="flex items-center justify-between">
-              <p className="text-xs font-bold uppercase tracking-wider text-gray-400">Filtros</p>
+              <p className="text-xs font-semibold text-gray-500">Filtros</p>
               <button
                 type="button"
                 onClick={() =>
@@ -1293,7 +1318,7 @@ function ChartBuilder({
 
           {/* Orden y límite */}
           <div className="space-y-3 border-t border-gray-100 pt-4">
-            <p className="text-xs font-bold uppercase tracking-wider text-gray-400">
+            <p className="text-xs font-semibold text-gray-500">
               Orden y límite
             </p>
             <div className="flex items-end gap-1.5">
@@ -1327,7 +1352,7 @@ function ChartBuilder({
                 max={50000}
                 value={state.limit}
                 onChange={(e) => set('limit', Math.max(1, Number(e.target.value) || 1))}
-                className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-iieg-400 focus:outline-none"
+                className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-iieg-400 focus:outline-none focus:ring-1 focus:ring-iieg-400"
               />
             </div>
           </div>
@@ -1344,9 +1369,7 @@ function ChartBuilder({
           Cancelar
         </button>
         <div className="flex items-center gap-3">
-          {saveError && (
-            <p className="text-xs text-red-600">{saveError}</p>
-          )}
+          {saveError && <ErrorBanner error={saveError} compact small />}
           {editingChart && (
             <input
               type="text"
@@ -1354,7 +1377,7 @@ function ChartBuilder({
               onChange={(e) => setChangeComment(e.target.value)}
               placeholder="Comentario del cambio (opcional)"
               maxLength={500}
-              className="w-64 rounded-lg border border-gray-200 px-3 py-2 text-xs focus:border-iieg-400 focus:outline-none"
+              className="w-64 rounded-lg border border-gray-200 px-3 py-2 text-xs focus:border-iieg-400 focus:outline-none focus:ring-1 focus:ring-iieg-400"
             />
           )}
           <button
@@ -1379,15 +1402,17 @@ export function GraficasPage() {
   const [tab, setTab] = useState<Tab>('list')
   const [editingChart, setEditingChart] = useState<Chart | null>(null)
   const [pickerType, setPickerType] = useState<ChartType | null>(null)
+  const [q, setQ] = useState('')
+  const [tagIds, setTagIds] = useState<string[]>([])
 
   const { data: charts = [], isLoading: loadingCharts } = useQuery({
-    queryKey: ['charts'],
-    queryFn: listCharts,
+    queryKey: ['charts', q, tagIds],
+    queryFn: () => listCharts({ q, tagIds }),
   })
 
   const { data: datasets = [] } = useQuery({
     queryKey: ['datasets'],
-    queryFn: listDatasets,
+    queryFn: () => listDatasets(),
   })
 
   const deleteMutation = useMutation({
@@ -1480,6 +1505,17 @@ export function GraficasPage() {
       <div className="flex-1 overflow-hidden">
         {tab === 'list' && (
           <div className="h-full overflow-y-auto p-6">
+            <div className="mb-4 flex flex-wrap items-center gap-3">
+              <input
+                type="text"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="Buscar gráfica…"
+                className="w-64 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm focus:border-iieg-400 focus:outline-none focus:ring-1 focus:ring-iieg-400"
+              />
+              <TagFilterBar value={tagIds} onChange={setTagIds} />
+            </div>
+
             {loadingCharts && (
               <p className="text-sm text-gray-400">Cargando gráficas…</p>
             )}

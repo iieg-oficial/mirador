@@ -46,17 +46,17 @@ export function AdminHome() {
 
   const { data: conexiones, isLoading: loadingConn } = useQuery({
     queryKey: ['conexiones'],
-    queryFn: listConexiones,
+    queryFn: () => listConexiones(),
   })
 
   const { data: datasets, isLoading: loadingDs } = useQuery({
     queryKey: ['datasets'],
-    queryFn: listDatasets,
+    queryFn: () => listDatasets(),
   })
 
   const { data: charts, isLoading: loadingCharts } = useQuery({
     queryKey: ['charts'],
-    queryFn: listCharts,
+    queryFn: () => listCharts(),
   })
 
   const noArchivadas = conexiones?.filter((c) => c.status !== 'archivada') ?? []

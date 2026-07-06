@@ -394,7 +394,7 @@ function KpiRenderer({ spec, rows, className = '', onExportReady }: ChartRendere
     <div className={`flex h-full w-full flex-col items-center justify-center ${className}`}>
       <span className="text-4xl font-bold text-iieg-700">{value}</span>
       {caption && (
-        <span className="mt-2 text-xs font-medium uppercase tracking-wider text-gray-500">
+        <span className="mt-2 text-xs font-semibold text-gray-500">
           {caption}
         </span>
       )}
