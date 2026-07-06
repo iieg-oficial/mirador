@@ -31,7 +31,7 @@ log = logging.getLogger(__name__)
 
 app = FastAPI(
     title="Tablerillos API",
-    version="0.1.1",
+    version="0.2.0",
     description="Business Intelligence institucional del IIEG.",
 )
 
