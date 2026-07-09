@@ -79,6 +79,11 @@ export interface PlaygroundRequest {
   max_rows?: number
 }
 
+export interface AiQueryGenerationResult {
+  sql: string
+  explanation?: string
+}
+
 export interface PreviewResult {
   columns: ColumnMeta[]
   rows: Record<string, unknown>[]

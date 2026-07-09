@@ -1,4 +1,5 @@
 import type {
+  AiQueryGenerationResult,
   Dataset,
   DatasetCreate,
   DatasetUpdate,
@@ -73,6 +74,22 @@ export async function previewDataset(
 export async function runPlayground(body: PlaygroundRequest): Promise<PreviewResult> {
   return parseResponse(
     await fetch(`${BASE}/playground`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+  )
+}
+
+export async function generateQuerySql(
+  connectionId: string,
+  prompt: string,
+  currentSql?: string,
+): Promise<AiQueryGenerationResult> {
+  const body: Record<string, unknown> = { connection_id: connectionId, prompt }
+  if (currentSql) body.current_sql = currentSql
+  return parseResponse(
+    await fetch('/api/admin/ai/query/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),

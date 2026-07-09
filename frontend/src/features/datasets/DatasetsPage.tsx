@@ -4,6 +4,7 @@ import { listConexiones } from '@/features/connections/api'
 import { downloadCsv } from '@/lib/csv'
 import { listDatasets, deleteDataset, runPlayground } from './api'
 import { DatasetForm } from './DatasetForm'
+import { AiQueryAssistant } from './AiQueryAssistant'
 import { TagBadge } from '@/components/shared/TagBadge'
 import { ErrorBanner } from '@/components/shared/ErrorBanner'
 import { TagFilterBar } from '@/features/tags/TagFilterBar'
@@ -371,6 +372,11 @@ function Playground({
               <span className="text-xs font-semibold text-gray-700">Query SQL</span>
             </div>
             <div className="flex flex-1 flex-col p-3">
+              <AiQueryAssistant
+                connectionId={connectionId}
+                currentSql={sql}
+                onGenerated={(newSql) => { setSql(newSql); setResult(null) }}
+              />
               <textarea
                 value={sql}
                 onChange={(e) => { setSql(e.target.value); setResult(null) }}
