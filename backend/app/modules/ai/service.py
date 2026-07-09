@@ -25,8 +25,6 @@ from app.modules.datasets.models import Dataset
 
 logger = logging.getLogger(__name__)
 
-_MAX_SCHEMA_OBJECTS = 40
-
 
 def _unprocessable(detail: str) -> HTTPException:
     """422 uniforme para toda salida de IA que no supera la validación."""
@@ -95,15 +93,16 @@ def _get_dataset_or_404(session: Session, dataset_id: uuid.UUID) -> Dataset:
 
 def _build_connection_schema_context(connection: Connection) -> str:
     """Contexto de esquema para la generación de SQL, reusando el explorador de
-    conexiones (excluye esquemas de sistema). Acotado a `_MAX_SCHEMA_OBJECTS`.
+    conexiones (excluye esquemas de sistema). Acotado a `AI_MAX_SCHEMA_OBJECTS`.
 
     Si la BD externa no responde → 503 (mismo patrón que datasets)."""
+    max_objects = get_settings().AI_MAX_SCHEMA_OBJECTS
     try:
         schema = connections_service.get_schema(connection)
         objects: list[prompts.SchemaObject] = []
         for group in schema.schemas:
             for obj in group.objects:
-                if len(objects) >= _MAX_SCHEMA_OBJECTS:
+                if len(objects) >= max_objects:
                     break
                 columns = connections_service.get_columns(connection, group.name, obj.name)
                 objects.append(
@@ -111,7 +110,7 @@ def _build_connection_schema_context(connection: Connection) -> str:
                         group.name, obj.name, [f"{c.name} {c.data_type}" for c in columns]
                     )
                 )
-            if len(objects) >= _MAX_SCHEMA_OBJECTS:
+            if len(objects) >= max_objects:
                 break
     except psycopg.OperationalError as exc:
         raise HTTPException(

@@ -232,6 +232,7 @@ OPENAI_API_KEY=<api-key-de-openai>
 OPENAI_MODEL=gpt-4o-mini
 AI_REQUEST_TIMEOUT_SECONDS=30
 AI_MAX_PROMPT_CHARS=4000
+AI_MAX_SCHEMA_OBJECTS=70
 ```
 
 | Variable | Default | Descripción |
@@ -240,6 +241,7 @@ AI_MAX_PROMPT_CHARS=4000
 | `OPENAI_MODEL` | `gpt-4o-mini` | Modelo de chat usado por `LangChainOpenAIProvider`. |
 | `AI_REQUEST_TIMEOUT_SECONDS` | `30` | Timeout duro de la llamada al LLM. Al exceder → 503. |
 | `AI_MAX_PROMPT_CHARS` | `4000` | Tope de caracteres del prompt del usuario. Al exceder → 422. |
+| `AI_MAX_SCHEMA_OBJECTS` | `70` | Máx. de tablas/vistas cuyo esquema se inyecta como contexto al generar SQL. Más objetos que esto se truncan (el modelo podría no ver la tabla objetivo). |
 
 ### Diferencias clave dev → producción
 

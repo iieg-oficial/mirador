@@ -46,6 +46,7 @@ class LangChainOpenAIProvider:
                 api_key=SecretStr(self._api_key),
                 timeout=self._timeout_seconds,
                 max_retries=0,
+                temperature=0.3,
             )
             prompt = ChatPromptTemplate.from_messages([("system", "{system}"), ("human", "{user}")])
             chain = prompt | llm | StrOutputParser()
