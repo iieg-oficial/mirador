@@ -49,8 +49,11 @@ ChartSpec 1.0 structure:
 - "version": "1.0"
 - "data": {{"dataset_id": <set by the backend>, "filters": [], "sort": [], "limit": <=50000}}
 - "visual": {{"chart_type": <type>, "title": <str>}}
-- "encodings": {{"x": [...], "y": [...], "color": ..., "tooltip": [...], "fields": {{...}}}}
-  where each encoding is {{"field": <column>, "aggregation": <optional>}}.
+- "encodings": each encoding is an object {{"field": <column>, "aggregation": <optional>}}.
+  - "x", "y", "tooltip": ARRAYS of encodings (use [] if none).
+  - "color", "size": a SINGLE encoding object, or omit them entirely. NEVER a string
+    or an array (e.g. use "color": {{"field": "sexo"}}, never "color": "sexo").
+  - "fields": object mapping named roles to encodings (for candlestick/boxplot).
 
 Per-chart-type rules:
 {type_rules}
