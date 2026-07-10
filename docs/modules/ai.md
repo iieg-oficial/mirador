@@ -14,8 +14,12 @@ laboratorio de datos, revalidados siempre en el backend:
 
 - **`/query/generate`**: genera SQL de solo lectura para el playground de datasets,
   a partir del esquema de una conexión.
-- **`/charts/generate`**: genera una **ChartSpec 1.0** válida para el constructor de
-  gráficas, a partir de la metadata de un dataset.
+- **`/charts/generate`**: genera una gráfica a partir de la metadata de un dataset,
+  en uno de tres formatos según `output_format`:
+  - `chartspec` (default): una **ChartSpec 1.0** validada en el backend.
+  - `echarts`: **código JavaScript** que retorna un `option` de ECharts.
+  - `plotly`: **código Python** que arma una figura `fig` de Plotly.
+  Los dos modos de código corren en el sandbox del cliente, no en el servidor.
 
 Es **solo el motor**: no tiene UI, ni chat, ni persistencia de historial, ni
 feedback/fine-tuning (fuera de alcance). El frontend consume estos endpoints y
@@ -66,7 +70,7 @@ dominio.
 | Método | Ruta | Permiso | Descripción |
 |---|---|---|---|
 | POST | `/api/admin/ai/query/generate` | `tablerillos.ai.use` | Body `{connection_id, prompt, current_sql?}` → `{sql, explanation?}`. El SQL pasa `sql_guard.validate_sql` antes de responder. |
-| POST | `/api/admin/ai/charts/generate` | `tablerillos.ai.use` | Body `{dataset_id, prompt, current_spec?, chart_type?}` → `{chart_spec, explanation?}`. La spec pasa `parse_spec` + `validate_spec_against_dataset`. |
+| POST | `/api/admin/ai/charts/generate` | `tablerillos.ai.use` | Body `{dataset_id, prompt, current_spec?, chart_type?, output_format?}` → `{chart_spec?, code?, code_engine?, explanation?}`. Con `output_format=chartspec` (default) la spec pasa `parse_spec` + `validate_spec_against_dataset`; con `echarts`/`plotly` devuelve `code` (revalidación no aplica, corre en el sandbox del cliente). |
 
 ---
 
@@ -77,13 +81,15 @@ dominio.
 - **`/query/generate`**: el contexto es el esquema de la conexión, reusando el
   explorador de conexiones (`connections/service.py` → `get_schema` / `get_columns`),
   excluyendo esquemas de sistema. La introspección está **acotada** a
-  `_MAX_SCHEMA_OBJECTS` (40) objetos para no leer la BD externa sin límite.
+  `AI_MAX_SCHEMA_OBJECTS` (default 70) objetos para no leer la BD externa sin límite.
 - **`/charts/generate`**: el contexto es `columns_schema` / `parameters_schema` ya
   guardados en el `Dataset` — **no** se reconsulta la BD externa — más las reglas
-  de ChartSpec 1.0 por tipo de gráfica.
+  de ChartSpec 1.0 por tipo (modo `chartspec`) o el contrato del runtime de código
+  (modos `echarts`/`plotly`: variables `rows`/`echarts`, `return` del `option`, o
+  `fig` de Plotly).
 
-La IA responde SIEMPRE un objeto JSON (`{"sql"|"chart_spec", "explanation"}`), para
-parsearlo de forma determinista y luego revalidarlo. Nunca se le pide código.
+La IA responde SIEMPRE un objeto JSON (`{"sql"|"chart_spec"|"code", "explanation"}`),
+para parsearlo de forma determinista.
 
 ---
 
@@ -91,9 +97,14 @@ parsearlo de forma determinista y luego revalidarlo. Nunca se le pide código.
 
 - **SQL**: un único `SELECT` / `WITH … SELECT` compatible con `sql_guard`. Nunca
   DML/DDL ni múltiples statements. Si la IA lo viola → 422.
-- **ChartSpec**: siempre una spec JSON válida para el tipo y el dataset. El backend
+- **Gráficas (chartspec)**: spec JSON válida para el tipo y el dataset. El backend
   **fija** `data.dataset_id` (la IA no decide sobre qué dataset opera). Si la spec
   no parsea o no valida contra el dataset → 422.
+- **Gráficas (echarts/plotly)**: la IA devuelve **código** (JS o Python) que corre
+  en el sandbox del cliente, no en el servidor. El backend no lo ejecuta ni lo
+  valida (solo comprueba que venga código no vacío); es el mismo modelo de confianza
+  que el código escrito por administradores en el sandbox de gráficas. Si no viene
+  código → 422.
 - **Límite de prompt**: `AI_MAX_PROMPT_CHARS` (422 si se excede).
 - **Timeout**: `AI_REQUEST_TIMEOUT_SECONDS` como límite duro en la llamada al LLM.
 
@@ -117,8 +128,11 @@ contexto también traduce `psycopg.OperationalError` a 503.
 - Todo endpoint exige `tablerillos.ai.use` vía `require_permission` (declarado en
   `manifest.minerva.yml`, otorgado a los mismos roles que `datasets.create` /
   `charts.create`: Superadmin, Administrador BI y Editor).
-- La salida del LLM se revalida con las defensas existentes; la IA no es una vía
-  para saltarse `sql_guard` ni la validación de ChartSpec.
+- Para SQL y ChartSpec, la salida del LLM se revalida con las defensas existentes
+  (`sql_guard`, `parse_spec` + `validate_spec_against_dataset`): la IA no es vía para
+  saltárselas. Los modos de código (`echarts`/`plotly`) no se validan en el servidor
+  porque corren en el sandbox del cliente — mismo modelo de confianza que el código
+  escrito por administradores en el sandbox de gráficas.
 
 ---
 

@@ -69,6 +69,49 @@ _TYPE_RULES = """\
 - candlestick: encodings.fields with open, close, lowest, highest + one field in x.
 - boxplot: encodings.fields with min, q1, median, q3, max + one field in x."""
 
+_ECHARTS_SYSTEM = """\
+You generate JavaScript code that builds an Apache ECharts chart for a BI platform.
+
+The code runs in a sandbox as the body of a function with two arguments already
+in scope:
+- `rows`: an array of row objects (each key is a dataset column name).
+- `echarts`: the ECharts module (use e.g. `echarts.graphic.LinearGradient`).
+The code MUST `return` a valid ECharts `option` object. Do NOT call
+`echarts.init`, do not touch the DOM, do not import anything.
+
+Output rules (mandatory):
+- Return EXCLUSIVELY a valid JSON object, with no extra text or markdown.
+- Format: {{"code": "<javascript>", "explanation": "<short explanation, in Spanish>"}}.
+- The `explanation` value MUST be written in Spanish.
+- `code` is a single JavaScript snippet (the function body ending in `return`).
+- Access columns via the row keys (e.g. `rows.map((r) => r.<column>)`).
+- Use ONLY columns present in the dataset below. Do not invent names.
+
+Available dataset:
+{dataset}
+"""
+
+_PLOTLY_SYSTEM = """\
+You generate Python code that builds a Plotly figure for a BI platform.
+
+The code runs in a Pyodide sandbox with these already available:
+- `rows`: a list of dicts (each key is a dataset column name).
+- `pandas` and `plotly` are installed (import them as needed).
+The code MUST leave the finished figure in a variable named `fig`. Do NOT call
+`fig.show()`, do not read files, do not access the network.
+
+Output rules (mandatory):
+- Return EXCLUSIVELY a valid JSON object, with no extra text or markdown.
+- Format: {{"code": "<python>", "explanation": "<short explanation, in Spanish>"}}.
+- The `explanation` value MUST be written in Spanish.
+- `code` is a single Python snippet that ends with `fig` assigned.
+- Build a DataFrame from `rows` (e.g. `pd.DataFrame(rows)`) and use its columns.
+- Use ONLY columns present in the dataset below. Do not invent names.
+
+Available dataset:
+{dataset}
+"""
+
 
 def render_connection_schema(objects: list[SchemaObject]) -> str:
     """Formatea (esquema, objeto, columnas) como líneas legibles para el modelo."""
@@ -128,5 +171,21 @@ def build_chart_user_prompt(
         )
     if chart_type:
         parts.append(f"Required chart type: {chart_type}")
+    parts.append(f"User request:\n{prompt}")
+    return "\n\n".join(parts)
+
+
+def build_echarts_system_prompt(dataset_context: str) -> str:
+    return _ECHARTS_SYSTEM.format(dataset=dataset_context)
+
+
+def build_plotly_system_prompt(dataset_context: str) -> str:
+    return _PLOTLY_SYSTEM.format(dataset=dataset_context)
+
+
+def build_chart_code_user_prompt(prompt: str, chart_type: ChartType | None) -> str:
+    parts: list[str] = []
+    if chart_type:
+        parts.append(f"Desired chart type: {chart_type}")
     parts.append(f"User request:\n{prompt}")
     return "\n\n".join(parts)

@@ -1,9 +1,10 @@
+import psycopg
 import json
 import logging
 import re
 import uuid
+from typing import Literal
 
-import psycopg
 from fastapi import HTTPException, status
 from sqlmodel import Session
 
@@ -42,8 +43,6 @@ def _complete(provider: AIProvider, *, system_prompt: str, user_prompt: str) -> 
     try:
         return provider.complete(system_prompt=system_prompt, user_prompt=user_prompt)
     except AIProviderError as exc:
-        # Se registra solo la categoría del fallo (timeout, rate limit, etc.), no
-        # el mensaje crudo: podría arrastrar cabeceras con la API key.
         cause = exc.__cause__ or exc
         logger.warning("Proveedor de IA no disponible (%s)", type(cause).__name__)
         raise HTTPException(
@@ -62,7 +61,6 @@ def _strip_code_fence(text: str) -> str:
     stripped = stripped[3:]
     if stripped.rstrip().endswith("```"):
         stripped = stripped.rstrip()[:-3]
-    # Quita un posible identificador de lenguaje inicial (json, sql, …) y un salto.
     stripped = re.sub(r"^[a-zA-Z0-9]*\n?", "", stripped, count=1)
     return stripped.strip()
 
@@ -158,8 +156,16 @@ def generate_chart(
 ) -> ChartGenerateResponse:
     _check_prompt_length(req.prompt)
     dataset = _get_dataset_or_404(session, req.dataset_id)
-
     dataset_context = prompts.render_dataset_context(dataset)
+
+    if req.output_format == "chartspec":
+        return _generate_chart_spec(provider, req, dataset, dataset_context)
+    return _generate_chart_code(provider, req, dataset_context)
+
+
+def _generate_chart_spec(
+    provider: AIProvider, req: ChartGenerateRequest, dataset: Dataset, dataset_context: str
+) -> ChartGenerateResponse:
     system_prompt = prompts.build_chart_system_prompt(dataset_context, req.chart_type)
     user_prompt = prompts.build_chart_user_prompt(req.prompt, req.current_spec, req.chart_type)
 
@@ -188,5 +194,34 @@ def generate_chart(
     explanation = data.get("explanation")
     return ChartGenerateResponse(
         chart_spec=spec.model_dump(mode="json"),
+        explanation=explanation if isinstance(explanation, str) else None,
+    )
+
+
+def _generate_chart_code(
+    provider: AIProvider, req: ChartGenerateRequest, dataset_context: str
+) -> ChartGenerateResponse:
+    """Modos echarts/plotly: la IA devuelve CÓDIGO que corre en el sandbox del
+    cliente (no en el servidor). No se puede ejecutar/validar aquí; solo se
+    comprueba que venga código no vacío."""
+    if req.output_format == "echarts":
+        system_prompt = prompts.build_echarts_system_prompt(dataset_context)
+        engine: Literal["echarts", "plotly"] = "echarts"
+    else:
+        system_prompt = prompts.build_plotly_system_prompt(dataset_context)
+        engine = "plotly"
+
+    user_prompt = prompts.build_chart_code_user_prompt(req.prompt, req.chart_type)
+    raw = _complete(provider, system_prompt=system_prompt, user_prompt=user_prompt)
+    data = _parse_json_output(raw)
+
+    code = data.get("code")
+    if not isinstance(code, str) or not code.strip():
+        raise _unprocessable("La IA no devolvió código para la gráfica.")
+
+    explanation = data.get("explanation")
+    return ChartGenerateResponse(
+        code=_strip_code_fence(code),
+        code_engine=engine,
         explanation=explanation if isinstance(explanation, str) else None,
     )

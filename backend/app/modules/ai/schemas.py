@@ -1,8 +1,11 @@
 import uuid
+from typing import Any, Literal
 from pydantic import BaseModel, Field
-from typing import Any
 
 from app.modules.charts.spec import ChartType
+
+
+ChartOutputFormat = Literal["chartspec", "echarts", "plotly"]
 
 
 class QueryGenerateRequest(BaseModel):
@@ -21,8 +24,11 @@ class ChartGenerateRequest(BaseModel):
     prompt: str = Field(min_length=1)
     current_spec: dict[str, Any] | None = None
     chart_type: ChartType | None = None
+    output_format: ChartOutputFormat = "chartspec"
 
 
 class ChartGenerateResponse(BaseModel):
-    chart_spec: dict[str, Any]
+    chart_spec: dict[str, Any] | None = None
+    code: str | None = None
+    code_engine: Literal["echarts", "plotly"] | None = None
     explanation: str | None = None

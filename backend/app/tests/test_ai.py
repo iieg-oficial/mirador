@@ -253,6 +253,61 @@ def test_chart_generate_missing_chart_spec_key_returns_422(client: TestClient) -
     assert res.status_code == 422, res.text
 
 
+def test_chart_generate_echarts_returns_code(client: TestClient) -> None:
+    dataset_id = _create_dataset(client)
+    _use_provider(
+        FakeAIProvider(
+            json.dumps(
+                {
+                    "code": "return { series: [{ type: 'bar', data: rows.map((r) => r.poblacion) }] }",
+                    "explanation": "Barras de población.",
+                }
+            )
+        )
+    )
+    res = client.post(
+        "/api/admin/ai/charts/generate",
+        json={"dataset_id": dataset_id, "prompt": "barras", "output_format": "echarts"},
+    )
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body["code_engine"] == "echarts"
+    assert "return" in body["code"]
+    assert body["chart_spec"] is None
+
+
+def test_chart_generate_plotly_returns_code(client: TestClient) -> None:
+    dataset_id = _create_dataset(client)
+    _use_provider(
+        FakeAIProvider(
+            json.dumps(
+                {
+                    "code": "import plotly.express as px\nfig = px.bar(rows, x='municipio', y='poblacion')",
+                    "explanation": "Barras con plotly.",
+                }
+            )
+        )
+    )
+    res = client.post(
+        "/api/admin/ai/charts/generate",
+        json={"dataset_id": dataset_id, "prompt": "barras", "output_format": "plotly"},
+    )
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body["code_engine"] == "plotly"
+    assert "fig" in body["code"]
+
+
+def test_chart_generate_echarts_missing_code_returns_422(client: TestClient) -> None:
+    dataset_id = _create_dataset(client)
+    _use_provider(FakeAIProvider(json.dumps({"explanation": "sin código"})))
+    res = client.post(
+        "/api/admin/ai/charts/generate",
+        json={"dataset_id": dataset_id, "prompt": "algo", "output_format": "echarts"},
+    )
+    assert res.status_code == 422, res.text
+
+
 # ── Resiliencia / límites / permisos ──────────────────────────────────────────
 
 
