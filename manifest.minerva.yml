@@ -25,6 +25,10 @@ application:
   base_url: http://localhost:8000
   redirect_uris:
     - http://localhost:8000/api/auth/callback
+    # Despliegue en el servidor SSH (backend en :8081). Debe coincidir EXACTO con
+    # MINERVA_REDIRECT_URI del .env del servidor; si no, Minerva responde
+    # "redirect_uri no autorizada para esta aplicación".
+    - http://10.13.23.126:8081/api/auth/callback
 
 permissions:
   # ----- Conexiones -----
