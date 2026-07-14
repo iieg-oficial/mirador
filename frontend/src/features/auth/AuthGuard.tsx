@@ -2,22 +2,26 @@ import { useEffect } from 'react'
 import { Outlet, useSearchParams } from 'react-router-dom'
 import { useAuth } from './useAuth'
 import { AccessDenied } from './AccessDenied'
+import { AuthError } from './AuthError'
 
 export function AuthGuard() {
   const { isPending, isAuthenticated, hasAccess } = useAuth()
   const [searchParams] = useSearchParams()
-  // Minerva 0.2.0 niega el login (sin rol en la app) antes de dar sesión y
-  // redirige aquí con ?error=access_denied. Sin este chequeo se reintentaría
-  // el login en bucle: nunca habrá sesión, reloguear no cambia el rol.
-  const deniedAtLogin = searchParams.get('error') === 'access_denied'
+  // El callback del backend redirige aquí con ?error=... en vez de responder
+  // JSON crudo. access_denied = sin rol en la app (Minerva niega antes de dar
+  // sesión). Cualquier otro = fallo del flujo OIDC (auth_failed). En ambos
+  // casos NO se reintenta el login en bucle: se muestra una pantalla de error.
+  const errorParam = searchParams.get('error')
+  const deniedAtLogin = errorParam === 'access_denied'
+  const authError = !!errorParam && !deniedAtLogin
 
   useEffect(() => {
     // Sin sesión → al login de Minerva. (Con sesión pero sin rol, o negado por
     // Minerva, NO redirige: reloguear no daría acceso; se muestra "sin acceso").
-    if (!isPending && !isAuthenticated && !deniedAtLogin) {
+    if (!isPending && !isAuthenticated && !deniedAtLogin && !authError) {
       window.location.href = '/api/auth/login'
     }
-  }, [isPending, isAuthenticated, deniedAtLogin])
+  }, [isPending, isAuthenticated, deniedAtLogin, authError])
 
   if (isPending) {
     return (
@@ -28,6 +32,9 @@ export function AuthGuard() {
   }
 
   if (deniedAtLogin) return <AccessDenied />
+
+  if (authError) return <AuthError />
+
 
   if (!isAuthenticated) return null
 

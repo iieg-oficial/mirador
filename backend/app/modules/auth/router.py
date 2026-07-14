@@ -10,7 +10,7 @@ import logging
 import secrets
 import urllib.parse
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, Request, Response, status
 from fastapi.responses import RedirectResponse
 
 from app.core.config import get_settings
@@ -49,6 +49,11 @@ async def login() -> RedirectResponse:
         "code_challenge": derive_code_challenge(verifier),
         "code_challenge_method": "S256",
         "nonce": nonce,
+        # Minerva no expone end-session/logout: el logout revoca el refresh_token
+        # pero NO borra la cookie SSO del navegador en el dominio de Minerva, así
+        # que sin esto el siguiente login entra sin pedir credenciales. prompt=login
+        # (OIDC estándar) fuerza a Minerva a reautenticar al usuario cada vez.
+        "prompt": "login",
     }
     # El navegador usa la URL pública de Minerva (no la interna del contenedor).
     authorize_url = (
@@ -66,37 +71,28 @@ async def callback(request: Request) -> RedirectResponse:
     state = request.query_params.get("state")
     error = request.query_params.get("error")
 
+    # El navegador aterriza directo en /callback, así que los errores NO deben
+    # responder JSON crudo: se redirige a la pantalla de error del frontend
+    # (?error=...) que AuthGuard renderiza. access_denied = sin rol en la app;
+    # auth_failed = cualquier otro fallo del flujo OIDC.
     if error:
-        # Minerva 0.2.0: un usuario sin rol en la app se redirige aquí con
-        # error=access_denied y sin code (antes se emitía code igual y el gate
-        # local de rol lo detectaba después). Se manda a la pantalla "sin
-        # acceso" en vez de tirar un error crudo; ver AuthGuard en el frontend.
         return RedirectResponse(f"{settings.FRONTEND_POST_LOGIN_URL}?error={error}")
     if not code or not state:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Parámetros de callback inválidos.",
-        )
+        return RedirectResponse(f"{settings.FRONTEND_POST_LOGIN_URL}?error=auth_failed")
 
     store = SessionStore()
     oidc_data = store.get(f"oidc:{state}")
     if not oidc_data:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Estado OIDC inválido o expirado. Intenta iniciar sesión de nuevo.",
-        )
+        return RedirectResponse(f"{settings.FRONTEND_POST_LOGIN_URL}?error=auth_failed")
     store.delete(f"oidc:{state}")
 
     from app.modules.auth.oidc import exchange_code_for_tokens
 
     try:
         tokens = await exchange_code_for_tokens(settings, code, oidc_data["code_verifier"])
-    except Exception as exc:
+    except Exception:
         log.exception("Error al canjear el código con Minerva")
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Error al canjear el código con Minerva.",
-        ) from exc
+        return RedirectResponse(f"{settings.FRONTEND_POST_LOGIN_URL}?error=auth_failed")
 
     # La sesión BFF guarda solo los tokens; la identidad (sub/email/name/roles) se
     # deriva en cada request decodificando el access_token con el SDK (firma
