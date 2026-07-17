@@ -10,7 +10,7 @@ import logging
 import secrets
 import urllib.parse
 
-from fastapi import APIRouter, Depends, Request, Response, status
+from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import RedirectResponse
 
 from app.core.config import get_settings
@@ -116,8 +116,8 @@ async def callback(request: Request) -> RedirectResponse:
     return response
 
 
-@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
-async def logout(request: Request, response: Response) -> None:
+@router.post("/logout")
+async def logout(request: Request, response: Response) -> dict[str, str]:
     settings = get_settings()
     sid = request.cookies.get(settings.SESSION_COOKIE_NAME)
     if sid:
@@ -129,3 +129,7 @@ async def logout(request: Request, response: Response) -> None:
             await revoke_token(settings, session_data["refresh_token"])
         store.delete(f"session:{sid}")
     response.delete_cookie(settings.SESSION_COOKIE_NAME)
+    # Single-logout: el navegador debe rebotar por el panel de Minerva para matar
+    # también la sesión SSO (token en localStorage del panel); si no, el próximo
+    # login reautoriza en silencio con la misma cuenta.
+    return {"logout_url": f"{settings.MINERVA_PUBLIC_PANEL_URL}/logout"}

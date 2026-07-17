@@ -94,9 +94,11 @@ const NAV_SECONDARY: NavItem[] = [
 ]
 
 async function logout() {
-  await fetch('/api/auth/logout', { method: 'POST' })
+  const res = await fetch('/api/auth/logout', { method: 'POST' })
   queryClient.clear()
-  window.location.href = '/'
+  const { logout_url } = await res.json().catch(() => ({}))
+  const backTo = encodeURIComponent(window.location.origin + '/')
+  window.location.href = logout_url ? `${logout_url}?redirect_uri=${backTo}` : '/'
 }
 
 function NavItemEl({ item }: { item: NavItem }) {
