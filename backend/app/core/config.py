@@ -54,7 +54,6 @@ class Settings(BaseSettings):
     MINERVA_CLIENT_SECRET: str | None = None
     MINERVA_REDIRECT_URI: str = "http://localhost:8000/api/auth/callback"
     MINERVA_SCOPES: str = "openid profile email"
-    MINERVA_PUBLIC_PANEL_URL: str = "http://localhost:9000"  # panel/login SPA (single-logout)
     FRONTEND_POST_LOGIN_URL: str = "http://localhost:5173/admin"
 
     # ----- CORS -----

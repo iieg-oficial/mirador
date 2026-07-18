@@ -94,6 +94,9 @@ const NAV_SECONDARY: NavItem[] = [
 ]
 
 async function logout() {
+  // El backend revoca la sesión BFF; luego rebotamos por el /logout del panel de
+  // Minerva (logout suave) para desactivar la cuenta en el navegador y así poder
+  // cambiar de cuenta en el próximo login (si no, select_account auto-avanza).
   const res = await fetch('/api/auth/logout', { method: 'POST' })
   queryClient.clear()
   const { logout_url } = await res.json().catch(() => ({}))
