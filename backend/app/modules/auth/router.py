@@ -10,7 +10,7 @@ import logging
 import secrets
 import urllib.parse
 
-from fastapi import APIRouter, Depends, Request, Response, status
+from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import RedirectResponse
 
 from app.core.config import get_settings
@@ -49,11 +49,11 @@ async def login() -> RedirectResponse:
         "code_challenge": derive_code_challenge(verifier),
         "code_challenge_method": "S256",
         "nonce": nonce,
-        # Minerva no expone end-session/logout: el logout revoca el refresh_token
-        # pero NO borra la cookie SSO del navegador en el dominio de Minerva, así
-        # que sin esto el siguiente login entra sin pedir credenciales. prompt=login
-        # (OIDC estándar) fuerza a Minerva a reautenticar al usuario cada vez.
-        "prompt": "login",
+        # Minerva mantiene múltiples cuentas activas por navegador. select_account
+        # (OIDC estándar) muestra el selector de cuenta en cada login: elegir una
+        # cuenta activa, reingresar una expirada o agregar otra. Sin esto haría SSO
+        # silencioso con la última cuenta y no dejaría cambiar de cuenta.
+        "prompt": "select_account",
     }
     # El navegador usa la URL pública de Minerva (no la interna del contenedor).
     authorize_url = (
@@ -116,8 +116,8 @@ async def callback(request: Request) -> RedirectResponse:
     return response
 
 
-@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
-async def logout(request: Request, response: Response) -> None:
+@router.post("/logout")
+async def logout(request: Request, response: Response) -> dict[str, str]:
     settings = get_settings()
     sid = request.cookies.get(settings.SESSION_COOKIE_NAME)
     if sid:
@@ -129,3 +129,9 @@ async def logout(request: Request, response: Response) -> None:
             await revoke_token(settings, session_data["refresh_token"])
         store.delete(f"session:{sid}")
     response.delete_cookie(settings.SESSION_COOKIE_NAME)
+    # Single logout (suave): el navegador rebota por el /logout del panel de Minerva
+    # para desactivar la cuenta en el navegador. Sin esto, con el auto-avance de
+    # select_account (Minerva 0.3.3) el re-login entraría en silencio a la misma
+    # cuenta y no se podría cambiar. Panel e issuer comparten origen (nginx
+    # consolidado), así que la URL se arma desde MINERVA_PUBLIC_ISSUER_URL.
+    return {"logout_url": f"{settings.MINERVA_PUBLIC_ISSUER_URL}/logout"}

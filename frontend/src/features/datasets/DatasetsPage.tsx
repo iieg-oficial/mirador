@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useEffect, useState } from 'react'
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { listConexiones } from '@/features/connections/api'
 import { downloadCsv } from '@/lib/csv'
 import { listDatasets, deleteDataset, runPlayground } from './api'
@@ -126,19 +126,24 @@ function DatasetList({
 }) {
   const qc = useQueryClient()
   const [q, setQ] = useState('')
+  const [debouncedQ, setDebouncedQ] = useState('')
   const [tagIds, setTagIds] = useState<string[]>([])
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedQ(q), 300)
+    return () => clearTimeout(timer)
+  }, [q])
+
   const { data: datasets = [], isLoading, error } = useQuery({
-    queryKey: ['datasets', q, tagIds],
-    queryFn: () => listDatasets({ q, tagIds }),
+    queryKey: ['datasets', debouncedQ, tagIds],
+    queryFn: () => listDatasets({ q: debouncedQ, tagIds }),
+    placeholderData: keepPreviousData,
   })
 
   const deleteMutation = useMutation({
     mutationFn: deleteDataset,
     onSuccess: () => qc.invalidateQueries({ queryKey: ['datasets'] }),
   })
-
-  if (isLoading) return <p className="py-6 text-center text-sm text-gray-400">Cargando…</p>
-  if (error) return <p className="py-6 text-center text-sm text-red-600">Error al cargar datasets.</p>
 
   return (
     <div className="flex flex-col gap-3">
@@ -153,7 +158,11 @@ function DatasetList({
         <TagFilterBar value={tagIds} onChange={setTagIds} />
       </div>
 
-      {datasets.length === 0 ? (
+      {isLoading ? (
+        <p className="py-6 text-center text-sm text-gray-400">Cargando…</p>
+      ) : error ? (
+        <p className="py-6 text-center text-sm text-red-600">Error al cargar datasets.</p>
+      ) : datasets.length === 0 ? (
         <div className="flex h-64 flex-col items-center justify-center gap-3 text-center">
           <svg className="h-12 w-12 text-gray-200" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1}

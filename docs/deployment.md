@@ -248,3 +248,84 @@ SESSION_TTL_SECONDS=86400
 - Usar un usuario PostgreSQL **de solo lectura** para las conexiones registradas por los usuarios, separado del usuario de metadata de Tablerillos.
 - HTTPS con TLS 1.2+ en todos los servicios expuestos.
 - Nginx o Caddy como reverse proxy (terminación TLS, headers de seguridad, rate limiting).
+
+---
+
+## Lecciones aprendidas: beta con Minerva coubicada en el mismo host
+
+Escenario: Tablerillos y Minerva corriendo como dos stacks Docker independientes en el
+mismo servidor, ambos alcanzables desde la red institucional por una IP privada (no
+`localhost`, no `host.docker.internal` desde fuera). Esto expone gotchas que no aparecen
+ni en dev puro (todo en `localhost`) ni en producción con dominios HTTPS reales.
+
+### El dual-URL se vuelve más estricto, no menos
+
+Con Minerva en el mismo host, es tentador usar la misma IP:puerto para
+`MINERVA_ISSUER_URL` y `MINERVA_PUBLIC_ISSUER_URL` — total, "es la misma máquina". **No
+funciona**: el contenedor del backend de Tablerillos no puede alcanzar la IP privada
+"externa" de su propio host (hairpin NAT no soportado por el gateway) aunque cualquier
+otra máquina de la red sí pueda. El backend necesita `http://host.docker.internal:<puerto
+de Minerva>`; solo el navegador debe usar la IP privada real.
+
+```env
+MINERVA_PUBLIC_ISSUER_URL=http://10.13.23.126:8080   # navegador
+MINERVA_ISSUER_URL=http://host.docker.internal:8080  # backend (server-to-server)
+```
+
+Síntoma si se equivoca: `/api/auth/login` redirige bien (eso lo arma el navegador), pero
+`/api/auth/callback` revienta con 502 y "Error al canjear el código con Minerva" — el
+canje de código es la primera llamada server-to-server, y es ahí donde el hairpin NAT
+tumba la conexión (timeout, no un error de Minerva).
+
+**Corolario:** fijar `MINERVA_EXPECTED_ISSUER` explícitamente al valor público (el mismo
+`iss` que Minerva realmente graba en el JWT, ver su propio `.well-known/openid-configuration`
+o su env `MINERVA_JWT_ISSUER`). Si se deja sin definir y el SDK cae por default a
+`MINERVA_ISSUER_URL`, quedaría esperando `host.docker.internal` como issuer — un valor que
+nunca va a matchear el `iss` real del token.
+
+### Diagnóstico: no confíes en `ping`/`curl` desde el propio host para validar una IP
+
+Si `curl` a la IP privada que te dieron para Minerva da timeout **desde el mismo host
+donde corre Minerva**, no concluyas que la IP está mal — es exactamente el síntoma de
+hairpin NAT (el host no puede alcanzarse a sí mismo por su IP "externa"). La fuente de
+verdad es el propio servicio: pega su `/.well-known/openid-configuration` (`issuer`,
+`authorization_endpoint`) y usa esos valores tal cual. Confirmar además desde una tercera
+máquina de la red si es posible.
+
+### `docker restart` no recarga `.env`
+
+`docker restart <contenedor>` reinicia el proceso con el entorno con el que el
+contenedor fue **creado**; no relee `env_file` ni variables nuevas. Después de editar
+`.env` hay que recrear el contenedor:
+
+```bash
+set -a && . ./.env && set +a
+docker compose -f infra/docker-compose.yml up -d backend   # recrea, no solo reinicia
+```
+
+### `manifest.minerva.yml` debe listar TODOS los `redirect_uris`, no solo el de dev
+
+El archivo es la fuente de verdad versionada; reimportarlo actualiza los metadatos de la
+aplicación en Minerva (a diferencia de permisos/roles, que solo se agregan, nunca se
+borran). Si el redirect_uri del beta se agrega manualmente en el panel de Minerva pero
+`manifest.minerva.yml` solo lista `localhost`, un reimport futuro (el paso documentado de
+despliegue a producción) lo puede pisar y tumbar el login del beta sin previo aviso.
+Agregar cada entorno como una entrada adicional en la lista, nunca reemplazar:
+
+```yaml
+redirect_uris:
+  - http://localhost:8000/api/auth/callback
+  - http://10.13.23.126:8000/api/auth/callback  # beta
+```
+
+### Bug observado en Minerva: seed de admin no es a prueba de multi-worker
+
+Con `gunicorn -w 4`, cada worker corre el startup de FastAPI de forma independiente. El
+seed del usuario admin hace un SELECT-then-INSERT sin lock ni `ON CONFLICT`: si más de un
+worker arranca en la ventana de la carrera, todos pasan el SELECT (nadie ve el admin
+todavía), varios intentan el INSERT, el que pierde revienta con `UniqueViolation`, y
+gunicorn trata cualquier fallo de arranque de worker como fatal (`HaltServer`, tumba el
+proceso completo). Es intermitente, no reproducible siempre — puede arrancar bien 10
+veces y fallar la 11. Recuperación: reintentar el arranque (`docker compose up -d
+backend` de nuevo) suele resolver la carrera. Esto es un bug del lado de Minerva, no de
+Tablerillos; vale la pena reportarlo a quien mantiene ese repo.
