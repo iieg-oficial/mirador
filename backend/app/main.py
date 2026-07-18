@@ -17,6 +17,7 @@ from app.core import database
 from app.core.config import get_settings
 from app.modules.auth import session as auth_session
 from app.modules.auth.deps import require_app_access
+from app.modules.ai.router import router as ai_router
 from app.modules.auth.router import router as auth_router
 from app.modules.charts.router import router as charts_router
 from app.modules.connections.router import router as connections_router
@@ -75,6 +76,7 @@ app.include_router(
     dashboards_router, prefix="/api/admin/dashboards", tags=["dashboards"], dependencies=_admin
 )
 app.include_router(tags_router, prefix="/api/admin/tags", tags=["tags"], dependencies=_admin)
+app.include_router(ai_router, prefix="/api/admin/ai", tags=["ai"], dependencies=_admin)
 
 
 @app.get("/health", tags=["meta"])
