@@ -88,19 +88,30 @@ export function SandboxEditor({
         <p className="mt-1 text-[11px] text-gray-500">
           {engine === 'plotly' ? (
             <>
-              Recibes <code className="rounded bg-gray-100 px-1">rows</code> (lista de dicts).
-              Deja la figura de Plotly en una variable{' '}
+              Recibes <code className="rounded bg-gray-100 px-1">rows</code> (lista de dicts) y{' '}
+              <code className="rounded bg-gray-100 px-1">params</code> (valores de los parámetros
+              declarados abajo). Deja la figura de Plotly en una variable{' '}
               <code className="rounded bg-gray-100 px-1">fig</code>. Disponibles{' '}
               <code className="rounded bg-gray-100 px-1">pandas</code> y{' '}
               <code className="rounded bg-gray-100 px-1">plotly.express</code>; la primera
-              ejecución descarga el runtime de Python (tarda un poco).
+              ejecución descarga el runtime de Python (tarda un poco). Sin soporte de eventos
+              (solo el motor ECharts).
             </>
           ) : (
             <>
-              Recibes <code className="rounded bg-gray-100 px-1">rows</code> (filas del dataset) y{' '}
-              <code className="rounded bg-gray-100 px-1">echarts</code>. Devuelve con{' '}
-              <code className="rounded bg-gray-100 px-1">return</code> un objeto{' '}
-              <code className="rounded bg-gray-100 px-1">option</code>.
+              Recibes <code className="rounded bg-gray-100 px-1">rows</code> (filas del dataset),{' '}
+              <code className="rounded bg-gray-100 px-1">echarts</code> y{' '}
+              <code className="rounded bg-gray-100 px-1">params</code> (valores de los parámetros
+              declarados abajo). Devuelve con <code className="rounded bg-gray-100 px-1">return</code>{' '}
+              un objeto <code className="rounded bg-gray-100 px-1">option</code>, o{' '}
+              <code className="rounded bg-gray-100 px-1">{'{ option, events }'}</code> para además
+              registrar eventos de ECharts (<code className="rounded bg-gray-100 px-1">click</code>,{' '}
+              <code className="rounded bg-gray-100 px-1">legendselectchanged</code>, …); cada
+              manejador recibe <code className="rounded bg-gray-100 px-1">(params, api)</code> con{' '}
+              <code className="rounded bg-gray-100 px-1">
+                api.highlight/downplay/select/unselect/dispatchAction
+              </code>
+              .
             </>
           )}
         </p>
