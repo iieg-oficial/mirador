@@ -112,6 +112,40 @@ class StyleSpec(BaseModel):
     legend_position: str = Field(default="top", max_length=20)
 
 
+ParamControl = Literal[
+    "select", "multiselect", "radio", "checkbox", "slider", "date", "number", "text",
+]
+
+_MAX_PARAMS = 10
+_PARAM_ID_RE = r"^[a-zA-Z_][a-zA-Z0-9_]*$"
+
+
+class ParamOption(BaseModel):
+    value: Any
+    label: str = Field(min_length=1, max_length=200)
+
+
+class ParamSpec(BaseModel):
+    """Parámetro interactivo del modo avanzado: llega al sandbox como `params.<id>`.
+
+    Puramente client-side (el backend no lo usa para generar SQL): sirve para
+    que el código del usuario reaccione a un control sin volver a consultar al
+    servidor, p.ej. filtrar `rows` por el municipio elegido.
+    """
+
+    id: str = Field(min_length=1, max_length=50, pattern=_PARAM_ID_RE)
+    label: str = Field(min_length=1, max_length=100)
+    control: ParamControl
+    options: list[ParamOption] = Field(default_factory=list)
+    # Alternativa a `options`: deriva las opciones de una columna del dataset,
+    # client-side, en tiempo de render (ver frontend/src/features/charts/params.ts).
+    options_from_column: str | None = Field(default=None, max_length=120)
+    min: float | None = None
+    max: float | None = None
+    step: float | None = None
+    default: Any = None
+
+
 # Secciones del EChartsOption que aceptan overrides (Fase 5). Todo lo demás
 # (series, dataset, toolbox, ...) lo genera únicamente el adaptador del frontend.
 OVERRIDABLE_SECTIONS = ("legend", "tooltip", "grid")
@@ -151,6 +185,19 @@ class ChartSpec(BaseModel):
     # Motor de la gráfica de código: 'echarts' ejecuta JS en el navegador;
     # 'plotly' ejecuta Python (Pyodide) y renderiza la figura con plotly.js.
     code_engine: Literal["echarts", "plotly"] = "echarts"
+    # Parámetros interactivos del modo avanzado (controles → `params.<id>` en el
+    # sandbox). Solo tienen efecto cuando `code` está presente.
+    params: list[ParamSpec] = Field(default_factory=list)
+
+    @field_validator("params")
+    @classmethod
+    def _check_params(cls, v: list[ParamSpec]) -> list[ParamSpec]:
+        if len(v) > _MAX_PARAMS:
+            raise ValueError(f"No se permiten más de {_MAX_PARAMS} parámetros.")
+        ids = [p.id for p in v]
+        if len(ids) != len(set(ids)):
+            raise ValueError("Los ids de params deben ser únicos.")
+        return v
 
     @field_validator("overrides")
     @classmethod
@@ -260,6 +307,13 @@ def validate_spec_against_dataset(
             if unknown:
                 errors.append(
                     f"Filtros/orden referencian columnas inexistentes: {', '.join(unknown)}."
+                )
+            param_cols = {p.options_from_column for p in spec.params if p.options_from_column}
+            unknown_params = sorted(param_cols - set(columns))
+            if unknown_params:
+                errors.append(
+                    f"params.options_from_column referencia columnas inexistentes: "
+                    f"{', '.join(unknown_params)}."
                 )
         return errors, warnings
 
