@@ -17,6 +17,7 @@ import type { ChartPreviewResult } from './api'
 import { ChartRenderer } from './ChartRenderer'
 import { ChartTypePicker } from './ChartTypePicker'
 import { SandboxEditor } from './SandboxEditor'
+import { ParamConfigPanel } from './ParamConfigPanel'
 import { TagBadge } from '@/components/shared/TagBadge'
 import { TagPicker } from '@/components/shared/TagPicker'
 import { ErrorBanner } from '@/components/shared/ErrorBanner'
@@ -32,6 +33,7 @@ import type {
   CodeEngine,
   FilterOperator,
   LegendPosition,
+  ParamSpec,
 } from '@/types/charts'
 import type { Dataset, ColumnMeta, SemanticType } from '@/types/datasets'
 import { SEMANTIC_TYPE_LABELS } from '@/types/datasets'
@@ -637,6 +639,8 @@ function ChartBuilder({
   const [engine, setEngine] = useState<CodeEngine>(
     editingChart?.chart_spec.code_engine ?? 'echarts',
   )
+  // Parámetros interactivos del sandbox (params.<id>), solo autoría en modo código.
+  const [params, setParams] = useState<ParamSpec[]>(editingChart?.chart_spec.params ?? [])
   // Spec con la que se corrió la última vista previa: el renderer usa este
   // snapshot (no el código vivo del editor) para no re-ejecutar el código del
   // usuario en cada tecleo — con Python (Pyodide) sería carísimo.
@@ -714,11 +718,12 @@ function ChartBuilder({
     set(key, [...state[key], column])
   }
 
-  // Spec efectiva: en modo código lleva el código del sandbox y su motor (ganan
-  // sobre encodings); si no, la derivada del builder visual.
+  // Spec efectiva: en modo código lleva el código del sandbox, su motor y sus
+  // parámetros interactivos (ganan sobre encodings); si no, la derivada del
+  // builder visual.
   const currentSpec = specFromState(state, schemaColumns)
   const effectiveSpec: ChartSpec =
-    mode === 'code' ? { ...currentSpec, code, code_engine: engine } : currentSpec
+    mode === 'code' ? { ...currentSpec, code, code_engine: engine, params } : currentSpec
 
   // Preview por spec: el backend genera la consulta segura (agregación,
   // filtros y orden server-side) y devuelve solo las filas necesarias.
@@ -932,15 +937,25 @@ function ChartBuilder({
       {/* Main: 3 columnas (visual) o editor + preview (avanzado) */}
       <div className="flex flex-1 overflow-hidden">
         {mode === 'code' && (
-          <div className="w-1/2 flex-shrink-0 border-r border-gray-100 bg-white">
-            <SandboxEditor
-              value={code}
-              onChange={setCode}
-              onRun={runPreview}
-              columns={schemaColumns}
-              engine={engine}
-              onEngineChange={changeEngine}
-            />
+          <div className="flex w-1/2 flex-shrink-0 flex-col overflow-hidden border-r border-gray-100 bg-white">
+            <div className="min-h-0 flex-1">
+              <SandboxEditor
+                value={code}
+                onChange={setCode}
+                onRun={runPreview}
+                columns={schemaColumns}
+                engine={engine}
+                onEngineChange={changeEngine}
+              />
+            </div>
+            <details className="flex-shrink-0 border-t border-gray-100">
+              <summary className="cursor-pointer select-none px-3 py-2 text-xs font-medium text-gray-600 hover:bg-gray-50">
+                Parámetros interactivos{params.length > 0 && ` (${params.length})`}
+              </summary>
+              <div className="max-h-64 overflow-y-auto border-t border-gray-100 p-3">
+                <ParamConfigPanel params={params} onChange={setParams} columns={schemaColumns} />
+              </div>
+            </details>
           </div>
         )}
 
@@ -1091,10 +1106,14 @@ function ChartBuilder({
 
             {!previewError && showChart && (
               <div className="h-full min-h-[300px] rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-                {/* En modo código se renderiza el snapshot de la última corrida,
-                 * no el código vivo del editor (ver ranSpec). */}
+                {/* En modo código se renderiza el snapshot de la última corrida
+                 * (código y filas), no el editor vivo (ver ranSpec) — pero los
+                 * params sí se toman en caliente: declarar uno nuevo debe verse
+                 * en la barra sin obligar a pulsar "Ejecutar". */}
                 <ChartRenderer
-                  spec={mode === 'code' && ranSpec ? ranSpec : effectiveSpec}
+                  spec={
+                    mode === 'code' && ranSpec ? { ...ranSpec, params } : effectiveSpec
+                  }
                   rows={previewData!.rows}
                 />
               </div>

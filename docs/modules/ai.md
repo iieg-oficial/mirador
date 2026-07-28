@@ -85,8 +85,9 @@ dominio.
 - **`/charts/generate`**: el contexto es `columns_schema` / `parameters_schema` ya
   guardados en el `Dataset` — **no** se reconsulta la BD externa — más las reglas
   de ChartSpec 1.0 por tipo (modo `chartspec`) o el contrato del runtime de código
-  (modos `echarts`/`plotly`: variables `rows`/`echarts`, `return` del `option`, o
-  `fig` de Plotly).
+  (modos `echarts`/`plotly`: variables `rows`/`echarts`/`params`, `return` del
+  `option` o `{ option, events }`, o `fig` de Plotly). Ver `docs/modules/charts.md`
+  para el contrato completo del sandbox (`ChartSpec.params`, eventos, `api`).
 
 La IA responde SIEMPRE un objeto JSON (`{"sql"|"chart_spec"|"code", "explanation"}`),
 para parsearlo de forma determinista.

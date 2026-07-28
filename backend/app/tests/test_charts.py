@@ -365,6 +365,92 @@ def test_code_chart_engine_defaults_to_echarts(client: TestClient) -> None:
     assert res.json()["renderer"] == "echarts"
 
 
+# ── Parámetros interactivos del modo avanzado ──────────────────────────────────
+
+
+def test_code_chart_with_params_ok(client: TestClient) -> None:
+    """Un round-trip de `params` persiste tal cual en la spec guardada."""
+    dataset_id = _create_dataset(client)
+    payload = {
+        "name": "Serie por municipio",
+        "chart_spec": _spec(
+            dataset_id,
+            encodings={"x": [], "y": []},
+            code="return { series: [] }",
+            params=[
+                {
+                    "id": "municipio",
+                    "label": "Municipio",
+                    "control": "select",
+                    "options_from_column": "municipio",
+                    "default": "Guadalajara",
+                },
+                {"id": "anio", "label": "Año", "control": "slider", "min": 2000, "max": 2025},
+            ],
+        ),
+    }
+    res = client.post("/api/admin/charts", json=payload)
+    assert res.status_code == 201, res.text
+    params = res.json()["chart_spec"]["params"]
+    assert [p["id"] for p in params] == ["municipio", "anio"]
+    assert params[0]["default"] == "Guadalajara"
+
+
+def test_code_chart_param_invalid_id_returns_422(client: TestClient) -> None:
+    dataset_id = _create_dataset(client)
+    payload = {
+        "name": "Param inválido",
+        "chart_spec": _spec(
+            dataset_id,
+            encodings={"x": [], "y": []},
+            code="return {}",
+            params=[{"id": "mi param", "label": "Malo", "control": "text"}],
+        ),
+    }
+    res = client.post("/api/admin/charts", json=payload)
+    assert res.status_code == 422, res.text
+
+
+def test_code_chart_param_duplicate_id_returns_422(client: TestClient) -> None:
+    dataset_id = _create_dataset(client)
+    payload = {
+        "name": "Params duplicados",
+        "chart_spec": _spec(
+            dataset_id,
+            encodings={"x": [], "y": []},
+            code="return {}",
+            params=[
+                {"id": "anio", "label": "Año", "control": "number"},
+                {"id": "anio", "label": "Año otra vez", "control": "number"},
+            ],
+        ),
+    }
+    res = client.post("/api/admin/charts", json=payload)
+    assert res.status_code == 422, res.text
+
+
+def test_code_chart_param_unknown_options_column_returns_422(client: TestClient) -> None:
+    dataset_id = _create_dataset(client)
+    payload = {
+        "name": "Columna inexistente",
+        "chart_spec": _spec(
+            dataset_id,
+            encodings={"x": [], "y": []},
+            code="return {}",
+            params=[
+                {
+                    "id": "x",
+                    "label": "X",
+                    "control": "select",
+                    "options_from_column": "no_existe",
+                }
+            ],
+        ),
+    }
+    res = client.post("/api/admin/charts", json=payload)
+    assert res.status_code == 422, res.text
+
+
 def test_admin_endpoint_requires_tablerillos_role(client: TestClient) -> None:
     """Un usuario de Minerva sin rol en Tablerillos es rechazado por require_app_access."""
     fastapi_app.dependency_overrides[get_current_user] = lambda: CurrentUser(sub="sin-rol", roles=[])

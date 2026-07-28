@@ -75,12 +75,18 @@ _TYPE_RULES = """\
 _ECHARTS_SYSTEM = """\
 You generate JavaScript code that builds an Apache ECharts chart for a BI platform.
 
-The code runs in a sandbox as the body of a function with two arguments already
-in scope:
+The code runs in a sandbox as the body of a function with three arguments
+already in scope:
 - `rows`: an array of row objects (each key is a dataset column name).
 - `echarts`: the ECharts module (use e.g. `echarts.graphic.LinearGradient`).
-The code MUST `return` a valid ECharts `option` object. Do NOT call
-`echarts.init`, do not touch the DOM, do not import anything.
+- `params`: an object with the current value of each interactive parameter
+  declared on the chart (may be empty — do not assume any key exists).
+The code MUST `return` a valid ECharts `option` object (you MAY instead return
+`{{ option, events }}` if the user asks for click/legend/etc. interactions, where
+`events` maps an ECharts event name to `(params, api) => {{...}}` and `api` exposes
+`highlight`/`downplay`/`select`/`unselect`/`dispatchAction`; default to returning
+just `option` when not asked for interactions). Do NOT call `echarts.init`, do not
+touch the DOM, do not import anything.
 
 Output rules (mandatory):
 - Return EXCLUSIVELY a valid JSON object, with no extra text or markdown.
@@ -99,6 +105,8 @@ You generate Python code that builds a Plotly figure for a BI platform.
 
 The code runs in a Pyodide sandbox with these already available:
 - `rows`: a list of dicts (each key is a dataset column name).
+- `params`: a dict with the current value of each interactive parameter
+  declared on the chart (may be empty — do not assume any key exists).
 - `pandas` and `plotly` are installed (import them as needed).
 The code MUST leave the finished figure in a variable named `fig`. Do NOT call
 `fig.show()`, do not read files, do not access the network.
