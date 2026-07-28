@@ -748,7 +748,7 @@ function ChartBuilder({
   function switchMode(next: 'visual' | 'code' | 'history') {
     if (next === mode) return
     if (next === 'code' && !code.trim()) {
-      const seed = engine === 'echarts' ? buildVisualCodeSeed(currentSpec, previewData?.rows ?? []) : null
+      const seed = engine === 'echarts' ? buildVisualCodeSeed(currentSpec) : null
       setCode(seed ?? CODIGO_INICIAL[engine])
     }
     setMode(next)
