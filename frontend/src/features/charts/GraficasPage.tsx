@@ -17,6 +17,7 @@ import type { ChartPreviewResult } from './api'
 import { ChartRenderer } from './ChartRenderer'
 import { ChartTypePicker } from './ChartTypePicker'
 import { SandboxEditor } from './SandboxEditor'
+import { buildVisualCodeSeed } from './codeSeed'
 import { TagBadge } from '@/components/shared/TagBadge'
 import { TagPicker } from '@/components/shared/TagPicker'
 import { ErrorBanner } from '@/components/shared/ErrorBanner'
@@ -741,10 +742,15 @@ function ChartBuilder({
   // Cambio de modo. Visual y código son formas de autoría distintas: el código
   // no es representable como encodings, así que no se sincroniza al builder
   // visual (guardar en visual descarta el código, y viceversa). Al entrar a
-  // código sin nada escrito, se siembra una plantilla.
+  // código sin nada escrito, se siembra el `option` de lo ya armado en visual
+  // (para ajustar fino en vez de empezar de cero); si el tipo no tiene
+  // traducción a ECharts (table/kpi) o el motor es Python, cae a la plantilla.
   function switchMode(next: 'visual' | 'code' | 'history') {
     if (next === mode) return
-    if (next === 'code' && !code.trim()) setCode(CODIGO_INICIAL[engine])
+    if (next === 'code' && !code.trim()) {
+      const seed = engine === 'echarts' ? buildVisualCodeSeed(currentSpec, previewData?.rows ?? []) : null
+      setCode(seed ?? CODIGO_INICIAL[engine])
+    }
     setMode(next)
   }
 
