@@ -37,7 +37,7 @@ dependencies = [
 dev = [
     "pytest>=8.3",
     "pytest-asyncio>=0.24",   # httpx (TestClient) ya viene en deps base
-    "ruff>=0.8",
+    "ruff>=0.8,<0.16",  # 0.16 activa reglas nuevas por default que rompen CI sin cambios de código
     "mypy>=1.13",
 ]
 
