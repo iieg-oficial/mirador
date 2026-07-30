@@ -12,9 +12,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Datasets (SQL crudo validado con `sql_guard`, columnas con metadata semántica,
   preview/playground, caché Redis)
 - Gráficas como **ChartSpec 1.0** (spec JSON versionada e independiente del
-  renderer): constructor visual drag-and-drop, editor avanzado JSON (CodeMirror),
-  generación segura de consultas desde la spec (agregación server-side),
-  validación/preview, versionado con restauración, clonado, estados. 9 tipos:
+  renderer): constructor visual drag-and-drop, modo avanzado con sandbox de
+  código (JS·ECharts o Python·Plotly, CodeMirror) con eventos de ECharts y
+  parámetros interactivos client-side (`ChartSpec.params`), generación segura
+  de consultas desde la spec (agregación server-side), validación/preview,
+  versionado con restauración, clonado, estados. 9 tipos:
   line/bar/pie/scatter/candlestick/boxplot/treemap + table/kpi (estos dos como
   componentes React, no ECharts). Ver `docs/modules/charts.md`.
 - Exportación: descarga CSV (client-side, desde las filas ya cargadas en preview) y PNG

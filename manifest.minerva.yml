@@ -59,6 +59,8 @@ permissions:
   - { key: tablerillos.dashboards.delete,   name: Eliminar dashboards }
   - { key: tablerillos.dashboards.approve,  name: Revisar y aprobar dashboards }
   - { key: tablerillos.dashboards.authorize, name: Publicar dashboards }
+  # ----- IA (generación asistida) -----
+  - { key: tablerillos.ai.use,              name: Usar asistente de IA }
   # ----- Exportación / Auditoría -----
   - { key: tablerillos.exports.create,      name: Generar exportaciones }
   - { key: tablerillos.audit.view,          name: Consultar auditoría }
@@ -90,6 +92,7 @@ roles:
       - tablerillos.dashboards.delete
       - tablerillos.dashboards.approve
       - tablerillos.dashboards.authorize
+      - tablerillos.ai.use
       - tablerillos.exports.create
       - tablerillos.audit.view
 
@@ -113,6 +116,7 @@ roles:
       - tablerillos.dashboards.create
       - tablerillos.dashboards.update
       - tablerillos.dashboards.authorize
+      - tablerillos.ai.use
       - tablerillos.exports.create
 
   - name: Editor

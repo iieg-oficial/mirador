@@ -56,6 +56,15 @@ class Settings(BaseSettings):
     MINERVA_SCOPES: str = "openid profile email"
     FRONTEND_POST_LOGIN_URL: str = "http://localhost:5173/admin"
 
+    OPENAI_API_KEY: str | None = None
+    OPENAI_MODEL: str = "gpt-4o-mini"
+    AI_REQUEST_TIMEOUT_SECONDS: int = 30
+    AI_MAX_PROMPT_CHARS: int = 4000
+    # Tope de objetos (tablas/vistas) cuyo esquema se inyecta como contexto al
+    # generar SQL. Si la conexión tiene más, se truncan y el modelo podría no ver
+    # la tabla objetivo. Subir con cuidado: infla el prompt (tokens/latencia).
+    AI_MAX_SCHEMA_OBJECTS: int = 70
+
     # ----- CORS -----
     CORS_ALLOW_ORIGINS: str = "http://localhost:5173"
 

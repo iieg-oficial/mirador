@@ -39,18 +39,26 @@ function loadRuntime(): Promise<Pyodide> {
 }
 
 /**
- * Ejecuta el código Python del usuario con `rows` (filas del dataset) en scope
- * y devuelve la figura Plotly que dejó en la variable `fig`.
+ * Ejecuta el código Python del usuario con `rows` (filas del dataset) y
+ * `params` (valores de los controles interactivos, ver ChartSpec.params) en
+ * scope, y devuelve la figura Plotly que dejó en la variable `fig`.
  */
 export async function runPythonFigure(
   code: string,
   rows: Record<string, unknown>[],
+  params: Record<string, unknown> = {},
 ): Promise<PlotlyFigure> {
   const py = await loadRuntime()
   py.globals.set('_rows_json', JSON.stringify(rows))
+  py.globals.set('_params_json', JSON.stringify(params))
   // `fig` se limpia antes de cada corrida para que una figura vieja no
   // enmascare un código que dejó de definirla.
-  await py.runPythonAsync('import json\nrows = json.loads(_rows_json)\nglobals().pop("fig", None)')
+  await py.runPythonAsync(
+    'import json\n' +
+      'rows = json.loads(_rows_json)\n' +
+      'params = json.loads(_params_json)\n' +
+      'globals().pop("fig", None)',
+  )
   await py.runPythonAsync(code)
   const figJson = (await py.runPythonAsync(
     "fig.to_json() if globals().get('fig') is not None else None",
