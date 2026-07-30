@@ -5,6 +5,9 @@ import { AGGREGATION_LABELS } from '@/types/charts'
 import type { ChartSpec, LegendPosition } from '@/types/charts'
 import { downloadCsv } from '@/lib/csv'
 import { echartsTheme } from './themes'
+import { makeSandboxApi, runUserCode } from './sandbox'
+import { defaultParamValues } from './params'
+import { ParamBar } from './ParamBar'
 
 // ── Posición de leyenda → opción ECharts ───────────────────────────────────────
 
@@ -426,19 +429,11 @@ interface ChartRendererProps {
   onExportReady?: (info: ChartExportInfo) => void
 }
 
-// Gráfica de código: ejecuta el JS del usuario (herramienta interna, sin la
-// restricción RNF-01) y devuelve el EChartsOption. En scope: `rows` (filas del
-// dataset) y `echarts` (el módulo). Debe `return` un objeto option.
-function runUserOption(code: string, rows: Record<string, unknown>[]): EChartsOption {
-  const fn = new Function('rows', 'echarts', code) as (
-    r: Record<string, unknown>[],
-    e: typeof echarts,
-  ) => unknown
-  const option = fn(rows, echarts)
-  if (!option || typeof option !== 'object') {
-    throw new Error('El código debe devolver (return) un objeto `option` de ECharts.')
-  }
-  return option as EChartsOption
+/** Props internas de los renderers que sí ejecutan el sandbox de código.
+ * `params` son los valores actuales de ChartSpec.params (dueño: el dispatcher
+ * `ChartRenderer`, ver más abajo) — solo importan cuando `spec.code` existe. */
+interface CodeAwareProps extends ChartRendererProps {
+  params?: Record<string, unknown>
 }
 
 // ── Render Plotly (gráficas de código Python) ──────────────────────────────────
@@ -446,7 +441,7 @@ function runUserOption(code: string, rows: Record<string, unknown>[]): EChartsOp
 // Ejecuta el Python del usuario (Pyodide) y monta la figura con plotly.js.
 // Runtime y librería se cargan bajo demanda (dynamic import) para no engordar
 // el bundle de quien nunca usa Plotly.
-function PlotlyRenderer({ spec, rows, className = '', onExportReady }: ChartRendererProps) {
+function PlotlyRenderer({ spec, rows, className = '', onExportReady, params = {} }: CodeAwareProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -465,7 +460,7 @@ function PlotlyRenderer({ spec, rows, className = '', onExportReady }: ChartRend
           import('./pythonRuntime'),
           import('plotly.js-dist-min'),
         ])
-        const fig = await runPythonFigure(code, rows)
+        const fig = await runPythonFigure(code, rows, params)
         if (cancelled) return
         await Plotly.newPlot(el, fig.data, { autosize: true, ...fig.layout }, { responsive: true })
         setError(null)
@@ -486,8 +481,8 @@ function PlotlyRenderer({ spec, rows, className = '', onExportReady }: ChartRend
     return () => {
       cancelled = true
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- solo re-ejecutar al cambiar código o datos
-  }, [code, rows])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- solo re-ejecutar al cambiar código, datos o params
+  }, [code, rows, params])
 
   // La figura sigue a su contenedor (grid del tablero, panel lateral), igual
   // que el ResizeObserver de EchartsRenderer.
@@ -532,7 +527,14 @@ function PlotlyRenderer({ spec, rows, className = '', onExportReady }: ChartRend
   )
 }
 
-function EchartsRenderer({ spec, rows, className = '', onDataClick, onExportReady }: ChartRendererProps) {
+function EchartsRenderer({
+  spec,
+  rows,
+  className = '',
+  onDataClick,
+  onExportReady,
+  params = {},
+}: CodeAwareProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const instanceRef = useRef<ECharts | null>(null)
   const [codeError, setCodeError] = useState<string | null>(null)
@@ -540,6 +542,10 @@ function EchartsRenderer({ spec, rows, className = '', onDataClick, onExportRead
   onDataClickRef.current = onDataClick
   const onExportReadyRef = useRef(onExportReady)
   onExportReadyRef.current = onExportReady
+  // Manejadores de `events` de la corrida anterior del sandbox: se quitan uno a
+  // uno antes de registrar los nuevos. Nunca `chart.off()` a secas — mataría el
+  // `click` de cross-filtering que registra el efecto de init, más abajo.
+  const userHandlersRef = useRef<[string, (params: unknown) => void][]>([])
 
   // Inicializar / destruir instancia con el contenedor. El tema de ECharts
   // solo se aplica en init, así que un cambio de tema re-crea la instancia.
@@ -566,19 +572,37 @@ function EchartsRenderer({ spec, rows, className = '', onDataClick, onExportRead
       ro.disconnect()
       chart.dispose()
       instanceRef.current = null
+      userHandlersRef.current = []
     }
   }, [theme])
 
-  // Actualizar opciones cuando cambian los datos o la configuración
+  // Actualizar opciones cuando cambian los datos, la configuración o los params.
   useEffect(() => {
     const chart = instanceRef.current
     if (!chart) return
+    for (const [ev, handler] of userHandlersRef.current) chart.off(ev, handler)
+    userHandlersRef.current = []
     try {
-      const option = spec.code
-        ? runUserOption(spec.code, rows)
-        : applyOverrides(buildOption(spec, rows), spec)
-      chart.clear()
-      chart.setOption(option, true)
+      if (spec.code) {
+        const { option, events } = runUserCode(spec.code, rows, params)
+        chart.clear()
+        chart.setOption(option, true)
+        const api = makeSandboxApi(chart)
+        for (const [ev, handler] of Object.entries(events)) {
+          const wrapped = (eventParams: unknown) => {
+            try {
+              handler(eventParams, api)
+            } catch (err) {
+              setCodeError(err instanceof Error ? err.message : String(err))
+            }
+          }
+          chart.on(ev, wrapped)
+          userHandlersRef.current.push([ev, wrapped])
+        }
+      } else {
+        chart.clear()
+        chart.setOption(applyOverrides(buildOption(spec, rows), spec), true)
+      }
       setCodeError(null)
     } catch (err) {
       chart.clear()
@@ -589,7 +613,7 @@ function EchartsRenderer({ spec, rows, className = '', onDataClick, onExportRead
       rows,
       columns: columnsForSpec(spec, rows),
     })
-  }, [spec, rows])
+  }, [spec, rows, params])
 
   return (
     <div className={`relative h-full w-full ${className}`}>
@@ -617,21 +641,56 @@ function EchartsRenderer({ spec, rows, className = '', onDataClick, onExportRead
 }
 
 export function ChartRenderer(props: ChartRendererProps) {
-  // Gráfica de código: el motor decide quién la materializa (JS→ECharts, Python→Plotly).
-  if (props.spec.code) {
-    return props.spec.code_engine === 'plotly' ? (
-      <PlotlyRenderer {...props} />
-    ) : (
-      <EchartsRenderer {...props} />
-    )
-  }
-  // table y kpi se renderizan como componentes React; el resto con ECharts.
-  switch (props.spec.visual.chart_type) {
-    case 'table':
-      return <TableRenderer {...props} />
-    case 'kpi':
-      return <KpiRenderer {...props} />
-    default:
-      return <EchartsRenderer {...props} />
-  }
+  // Parámetros interactivos (§8): el dispatcher es su dueño para que los dos
+  // call sites (builder y tableros) los obtengan sin cablear nada. Solo tienen
+  // efecto en gráficas de código; una spec declarativa nunca declara params
+  // (el panel de autoría vive en el modo código), pero el guard es explícito.
+  const specParams = props.spec.code ? (props.spec.params ?? []) : []
+  const [values, setValues] = useState<Record<string, unknown>>(() => defaultParamValues(specParams))
+  // ponytail: JSON.stringify de una lista de ~10 params es más barato que
+  // mantener una firma derivada aparte solo para resincronizar el default.
+  const paramsKey = JSON.stringify(specParams)
+  useEffect(() => {
+    setValues(defaultParamValues(specParams))
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- paramsKey ya representa specParams
+  }, [paramsKey])
+
+  const hasParamBar = specParams.length > 0
+  // Con barra de params, el className del caller va en el div envolvente
+  // (abajo); pasarlo también al renderer interno lo aplicaría dos veces.
+  const innerProps = hasParamBar ? { ...props, className: undefined } : props
+
+  const inner = (() => {
+    // Gráfica de código: el motor decide quién la materializa (JS→ECharts, Python→Plotly).
+    if (innerProps.spec.code) {
+      return innerProps.spec.code_engine === 'plotly' ? (
+        <PlotlyRenderer {...innerProps} params={values} />
+      ) : (
+        <EchartsRenderer {...innerProps} params={values} />
+      )
+    }
+    // table y kpi se renderizan como componentes React; el resto con ECharts.
+    switch (innerProps.spec.visual.chart_type) {
+      case 'table':
+        return <TableRenderer {...innerProps} />
+      case 'kpi':
+        return <KpiRenderer {...innerProps} />
+      default:
+        return <EchartsRenderer {...innerProps} />
+    }
+  })()
+
+  if (!hasParamBar) return inner
+
+  return (
+    <div className={`flex h-full w-full flex-col ${props.className ?? ''}`}>
+      <ParamBar
+        params={specParams}
+        values={values}
+        rows={props.rows}
+        onChange={(id, v) => setValues((prev) => ({ ...prev, [id]: v }))}
+      />
+      <div className="min-h-0 flex-1">{inner}</div>
+    </div>
+  )
 }

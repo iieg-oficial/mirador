@@ -120,6 +120,46 @@ export interface OverridesSpec {
   grid?: Record<string, unknown>
 }
 
+export type ParamControl =
+  | 'select'
+  | 'multiselect'
+  | 'radio'
+  | 'checkbox'
+  | 'slider'
+  | 'date'
+  | 'number'
+  | 'text'
+
+export const PARAM_CONTROL_LABELS: Record<ParamControl, string> = {
+  select: 'Lista desplegable',
+  multiselect: 'Selección múltiple',
+  radio: 'Opciones (radio)',
+  checkbox: 'Casilla',
+  slider: 'Deslizador',
+  date: 'Fecha',
+  number: 'Número',
+  text: 'Texto',
+}
+
+export interface ParamOption {
+  value: unknown
+  label: string
+}
+
+// Parámetro interactivo del modo avanzado: llega al sandbox como `params.<id>`.
+// Es puramente client-side (no genera SQL); ver features/charts/params.ts.
+export interface ParamSpec {
+  id: string
+  label: string
+  control: ParamControl
+  options?: ParamOption[]
+  options_from_column?: string | null
+  min?: number | null
+  max?: number | null
+  step?: number | null
+  default?: unknown
+}
+
 export interface ChartSpec {
   version: '1.0'
   data: DataSpec
@@ -133,6 +173,8 @@ export interface ChartSpec {
   code?: string | null
   // Motor del código: 'echarts' = JS en el navegador; 'plotly' = Python (Pyodide).
   code_engine?: CodeEngine
+  // Parámetros interactivos del modo avanzado (controles → `params.<id>`).
+  params?: ParamSpec[]
 }
 
 /** Spec vacía con los mismos defaults que el backend. */
@@ -149,6 +191,7 @@ export function emptySpec(datasetId: string, chartType: ChartType): ChartSpec {
       orientation: 'vertical',
       legend_position: 'top',
     },
+    params: [],
   }
 }
 
