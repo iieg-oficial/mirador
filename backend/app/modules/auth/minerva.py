@@ -121,13 +121,15 @@ async def resolve_user(request: Request) -> CurrentUser:
 
 
 async def assert_permission(request: Request, user: CurrentUser, permission: str) -> None:
-    """Autoriza `permission` contra Minerva en tiempo real; lanza 403 si falta."""
-    from minerva_sdk.fastapi import require_permission as sdk_require_permission
+    """Autoriza `permission` contra Minerva en tiempo real; lanza 403 si falta.
+
+    Usa `check_permission` del SDK, su entrada para integraciones que no reciben
+    un Bearer en la cabecera: recibe el token directo (aquí, el de la sesión BFF)
+    y conserva la validación en tiempo real, la caché y la revocación. La
+    dependencia `require_permission` NO sirve aquí: lee el token del `HTTPBearer`
+    que FastAPI le inyecta, no del argumento `user`.
+    """
+    from minerva_sdk.fastapi import check_permission
 
     settings = get_settings()
-    token = _access_token(request)
-    # Reusa la dependencia de permisos del SDK (validación en tiempo real +
-    # caché + revocación), alimentándola con los datos ya resueltos en vez de
-    # releer la cabecera Authorization (que en el modelo BFF no existe).
-    dependency = sdk_require_permission(permission, settings.MINERVA_APPLICATION_CODE)
-    await dependency(user={"sub": user.sub, "_token": token})
+    await check_permission(_access_token(request), permission, settings.MINERVA_APPLICATION_CODE)

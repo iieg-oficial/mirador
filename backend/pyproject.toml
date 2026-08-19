@@ -7,7 +7,7 @@ include = ["app*"]
 
 [project]
 name = "tablerillos-backend"
-version = "0.4.0"
+version = "0.4.1"
 description = "Backend FastAPI de Tablerillos — BI institucional del IIEG"
 requires-python = ">=3.12"
 dependencies = [
@@ -30,7 +30,7 @@ dependencies = [
     # SDK de Minerva: OBLIGATORIO. Minerva es la única fuente de identidad y
     # autorización. Repo privado: requiere un PAT (GITHUB_TOKEN) para instalar
     # (en Docker se pasa como secreto de BuildKit; ver Dockerfile).
-    "minerva-sdk @ git+https://github.com/iieg-oficial/minerva.git@v0.1.0#subdirectory=sdk",
+    "minerva-sdk @ git+https://github.com/iieg-oficial/minerva.git@v0.7.0#subdirectory=sdk",
 ]
 
 [project.optional-dependencies]
