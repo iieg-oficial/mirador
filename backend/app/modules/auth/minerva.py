@@ -132,6 +132,4 @@ async def assert_permission(request: Request, user: CurrentUser, permission: str
     from minerva_sdk.fastapi import check_permission
 
     settings = get_settings()
-    await check_permission(
-        _access_token(request), permission, settings.MINERVA_APPLICATION_CODE
-    )
+    await check_permission(_access_token(request), permission, settings.MINERVA_APPLICATION_CODE)
