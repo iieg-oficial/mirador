@@ -7,6 +7,25 @@ y el proyecto usa [Versionado Semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-08-19
+
+### Corregido
+
+- **Todas las vistas del panel devolvían "Error interno del servidor".** Con
+  `minerva-sdk v0.7.0` la dependencia `require_permission` del SDK toma el token del
+  encabezado `Authorization`, que en el modelo BFF no existe; al invocarla a mano, toda
+  petición autorizada terminaba en 500. La autorización ahora usa `check_permission`, la
+  entrada del SDK pensada para integraciones que no reciben Bearer directo, conservando
+  la validación en tiempo real, la caché y la propagación de revocación.
+
+### Documentación / Infra
+
+- `minerva-sdk` fijado en `v0.7.0`. Al desplegar hay que reconstruir la imagen del
+  backend (`docker compose build backend`).
+- `justfile` en la raíz con las recetas de desarrollo: `up`/`down`/`restart`/`logs`/`ps`/
+  `sh`/`health` para el stack, `lint`/`fmt`/`types`/`test`/`migrate`/`revision` para el
+  backend, `dev`/`build` para el frontend y `check` para todo junto.
+
 ## [0.4.0] - 2026-07-30
 
 ### Añadido
