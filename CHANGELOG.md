@@ -7,6 +7,19 @@ y el proyecto usa [Versionado Semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-08-24
+
+### Corregido
+
+- **No se podían agregar gráficas ni bloques de Markdown a un tablero en el despliegue
+  interno.** `crypto.randomUUID()` solo existe en contextos seguros (HTTPS, `localhost` o
+  `127.0.0.1`): servido por HTTP plano contra una IP es `undefined`, así que las dos
+  funciones que agregan items al tablero morían con `TypeError` dentro del handler del
+  click, sin llegar nunca a la API. Se sustituye por `newId()`
+  (`frontend/src/lib/id.ts`), que usa `crypto.randomUUID()` cuando está disponible y si no
+  arma el UUID v4 con `crypto.getRandomValues()`, que sí funciona en contextos inseguros.
+  No reproducía en desarrollo porque `localhost` sí es contexto seguro.
+
 ## [0.4.1] - 2026-08-19
 
 ### Corregido
