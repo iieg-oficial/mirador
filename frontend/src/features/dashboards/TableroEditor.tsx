@@ -28,6 +28,7 @@ import type { Chart, FilterOperator, FilterSpec } from '@/types/charts'
 import type { DashboardItemPayload, DashboardItemRead } from '@/types/dashboards'
 import type { TemplateContext } from './utils/resolveDashboardTemplate'
 import { downloadBlob } from '@/lib/download'
+import { newId } from '@/lib/id'
 
 const ResponsiveGridLayout = WidthProvider(Responsive)
 
@@ -283,7 +284,7 @@ export function TableroEditor() {
 
   function addChartItem(chart: Chart) {
     const item: DashboardItemRead = {
-      id: crypto.randomUUID(),
+      id: newId(),
       dashboard_id: id!,
       chart_id: chart.id,
       item_type: 'chart',
@@ -297,7 +298,7 @@ export function TableroEditor() {
 
   function addMarkdownItem() {
     const item: DashboardItemRead = {
-      id: crypto.randomUUID(),
+      id: newId(),
       dashboard_id: id!,
       chart_id: null,
       item_type: 'markdown',
